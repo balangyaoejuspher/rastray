@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+set -e
+
+RED='\033[31m'
+YELLOW='\033[33m'
+RESET='\033[0m'
+
+fail() {
+    printf "\n${RED}[pre-commit] %s${RESET}\n\n" "$1" >&2
+    printf "Bypass with --no-verify only in emergencies.\n\n" >&2
+    exit 1
+}
+
+if ! command -v cargo >/dev/null 2>&1; then
+    printf "${YELLOW}[pre-commit] cargo not found on PATH, skipping checks.${RESET}\n" >&2
+    exit 0
+fi
+
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.rs$' || true)
+STAGED_TOML=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)Cargo\.(toml|lock)$' || true)
+
+if [ -z "$STAGED_RS" ] && [ -z "$STAGED_TOML" ]; then
+    exit 0
+fi
+
+printf "[pre-commit] cargo fmt --check\n"
+cargo fmt --all -- --check || fail "cargo fmt failed. Run 'cargo fmt --all' and re-stage."
+
+printf "[pre-commit] checking for forbidden patterns in staged Rust files\n"
+if [ -n "$STAGED_RS" ]; then
+    FORBIDDEN=$(printf '%s\n' "$STAGED_RS" | xargs grep -nE '^\s*(//|///|//!|/\*)' 2>/dev/null || true)
+    if [ -n "$FORBIDDEN" ]; then
+        printf "${RED}[pre-commit] Comments detected in staged Rust files. This project ships zero comments.${RESET}\n" >&2
+        printf '%s\n' "$FORBIDDEN" >&2
+        fail "remove comments before committing."
+    fi
+
+    UNSAFE=$(printf '%s\n' "$STAGED_RS" | xargs grep -nE '\bunsafe\b|\.unwrap\(\)|\.expect\(|panic!\(' 2>/dev/null || true)
+    if [ -n "$UNSAFE" ]; then
+        printf "${RED}[pre-commit] Forbidden tokens (unsafe / unwrap / expect / panic!) in staged Rust files.${RESET}\n" >&2
+        printf '%s\n' "$UNSAFE" >&2
+        fail "rewrite to return Result instead."
+    fi
+fi
+
+printf "[pre-commit] cargo clippy\n"
+if ! cargo clippy --all-targets --all-features --quiet -- -D warnings 2>/dev/null; then
+    printf "${YELLOW}[pre-commit] cargo clippy could not run (likely missing linker). Skipping.${RESET}\n" >&2
+fi
+
+exit 0

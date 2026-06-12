@@ -1,0 +1,119 @@
+mod cli;
+mod crawler;
+mod modules;
+mod reporter;
+
+use std::process::ExitCode;
+
+use miette::Diagnostic;
+use thiserror::Error;
+
+use crate::cli::{Cli, Severity};
+use crate::crawler::{CrawlSummary, FileKind};
+use crate::modules::{default_registry, Analyzer, AnalyzerError};
+use crate::reporter::{Category, Finding, Report, ReporterError};
+
+#[derive(Debug, Error, Diagnostic)]
+enum AppError {
+    #[error(transparent)]
+    #[diagnostic(code(rastray::crawl))]
+    Crawl(#[from] crawler::CrawlError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::report))]
+    Report(#[from] ReporterError),
+}
+
+mod exit {
+    pub const OK: u8 = 0;
+    pub const FINDINGS: u8 = 1;
+    pub const RUNTIME_ERROR: u8 = 2;
+}
+
+fn main() -> ExitCode {
+    let _ = miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(true)
+                .context_lines(2)
+                .build(),
+        )
+    }));
+
+    let cli = Cli::parsed();
+
+    match run(cli) {
+        Ok(code) => ExitCode::from(code),
+        Err(err) => {
+            let report: miette::Report = err.into();
+            eprintln!("{report:?}");
+            ExitCode::from(exit::RUNTIME_ERROR)
+        }
+    }
+}
+
+fn run(cli: Cli) -> Result<u8, AppError> {
+    let format = cli.effective_format();
+    let min_severity = cli.min_severity;
+
+    let crawl = crawler::walk_project(&cli)?;
+
+    let mut report = Report::new();
+    populate_stats(&mut report, &crawl);
+
+    for err in &crawl.errors {
+        report.push(
+            Finding::new(
+                "RSTR-CRAWL-001",
+                format!("crawl warning: {err}"),
+                Severity::Info,
+                Category::Crawler,
+            )
+            .with_help("review filesystem permissions and re-run the scan"),
+        );
+    }
+
+    run_analyzers(&crawl, &mut report);
+
+    report.apply_min_severity(min_severity);
+    report.render(format)?;
+
+    let exit_code = if report.has_at_or_above(min_severity) {
+        exit::FINDINGS
+    } else {
+        exit::OK
+    };
+
+    Ok(exit_code)
+}
+
+fn populate_stats(report: &mut Report, crawl: &CrawlSummary) {
+    let stats = &mut report.stats;
+    stats.files_scanned = crawl.total();
+    stats.manifests = crawl.count_of(FileKind::Manifest);
+    stats.source_files = crawl.count_of(FileKind::Source);
+    stats.config_files = crawl.count_of(FileKind::Config);
+    stats.other_files = crawl.count_of(FileKind::Other);
+    stats.crawl_errors = crawl.errors.len();
+    stats.skipped = crawl.skipped;
+}
+
+fn run_analyzers(crawl: &CrawlSummary, report: &mut Report) {
+    for analyzer in default_registry() {
+        match analyzer.analyze(crawl) {
+            Ok(findings) => report.extend(findings),
+            Err(err) => report.push(analyzer_error_finding(analyzer.as_ref(), err)),
+        }
+    }
+}
+
+fn analyzer_error_finding(analyzer: &(dyn Analyzer + Send + Sync), err: AnalyzerError) -> Finding {
+    Finding::new(
+        "RSTR-INT-001",
+        format!("analyzer '{}' failed: {err}", analyzer.name()),
+        Severity::Medium,
+        Category::Internal,
+    )
+    .with_help("re-run with --verbose for additional context")
+}

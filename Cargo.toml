@@ -1,0 +1,44 @@
+[package]
+name = "rastray"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85.0"
+description = "Blazing-fast static analysis CLI for security, dependency, and performance audits."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/balangyaoejuspher/rastray"
+homepage = "https://github.com/balangyaoejuspher/rastray"
+documentation = "https://github.com/balangyaoejuspher/rastray"
+readme = "README.md"
+keywords = ["static-analysis", "security", "audit", "cli", "linter"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.6", features = ["derive", "cargo"] }
+ignore = "0.4.26"
+miette = { version = "7.6", features = ["fancy"] }
+thiserror = "2.0"
+regex = "1.10"
+tokio = { version = "1.47", default-features = false, features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "io-util",
+    "time",
+    "sync",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "http2",
+    "json",
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+semver = "1.0"
+tree-sitter = "0.25"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = 3

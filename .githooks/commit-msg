@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+set -e
+
+MSG_FILE="$1"
+FIRST_LINE=$(head -n 1 "$MSG_FILE")
+
+if printf '%s' "$FIRST_LINE" | grep -qE '^(Merge |Revert "|fixup!|squash!)'; then
+    exit 0
+fi
+
+PATTERN='^(feat|fix|perf|refactor|docs|test|build|ci|chore|revert)(\([a-z0-9._-]+\))?!?: [^ ].{0,68}[^. ]$'
+
+if ! printf '%s' "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    printf '\n\033[31m[commit-msg] Commit rejected: subject does not match Conventional Commits.\033[0m\n\n' >&2
+    printf 'Got:\n  %s\n\n' "$FIRST_LINE" >&2
+    printf 'Expected:\n  <type>(<optional scope>)!: <description>\n\n' >&2
+    printf 'Rules:\n' >&2
+    printf '  - type must be one of: feat, fix, perf, refactor, docs, test, build, ci, chore, revert\n' >&2
+    printf '  - subject <= 72 chars\n' >&2
+    printf '  - no trailing period\n' >&2
+    printf '  - imperative mood ("add" not "added")\n\n' >&2
+    printf 'See COMMIT_CONVENTION.md for examples.\n' >&2
+    printf 'Bypass with --no-verify only in emergencies.\n\n' >&2
+    exit 1
+fi
+
+if printf '%s' "$FIRST_LINE" | grep -qE '!:'; then
+    if ! grep -qE '^BREAKING CHANGE: ' "$MSG_FILE"; then
+        printf '\n\033[31m[commit-msg] Commit rejected: "!" indicates a breaking change but no "BREAKING CHANGE:" footer was found.\033[0m\n\n' >&2
+        printf 'Add a footer like:\n  BREAKING CHANGE: <impact and migration notes>\n\n' >&2
+        exit 1
+    fi
+fi
+
+exit 0
