@@ -88,7 +88,7 @@ cargo build
 cargo test
 ```
 
-Prerequisites match the README: Rust ≥ 1.85.0 and a working C/C++ toolchain (MSVC Build Tools on Windows, Xcode CLT on macOS, `build-essential` on Linux).
+Prerequisites match the README: Rust ≥ 1.86.0 and a working C/C++ toolchain (MSVC Build Tools on Windows, Xcode CLT on macOS, `build-essential` on Linux).
 
 ---
 

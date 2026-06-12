@@ -4,7 +4,7 @@
 [![Security audit](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml/badge.svg)](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/balangyaoejuspher/rastray/badge)](https://securityscorecards.dev/viewer/?uri=github.com/balangyaoejuspher/rastray)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![MSRV](https://img.shields.io/badge/MSRV-1.85.0-blue.svg)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.86.0-blue.svg)](Cargo.toml)
 
 > Blazing-fast static analysis CLI for security, dependency, and performance audits.
 
@@ -30,7 +30,7 @@ Most security/dep/perf tools in the polyglot world fall into one of three bucket
 
 ### Prerequisites
 
-- **Rust** 1.85.0 or newer (`rustup default stable`)
+- **Rust** 1.86.0 or newer (`rustup default stable`)
 - A working C/C++ toolchain for linking:
   - Windows → **Visual Studio Build Tools** with the _Desktop development with C++_ workload (provides `link.exe`)
   - macOS → Xcode Command Line Tools (`xcode-select --install`)
