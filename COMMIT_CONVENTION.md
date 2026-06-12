@@ -2,12 +2,13 @@
 
 `rastray` follows the [**Conventional Commits 1.0.0**](https://www.conventionalcommits.org/en/v1.0.0/) specification. Every commit on `main` — and every commit in an invited PR — must match.
 
-Two local hooks in [`.githooks/`](.githooks) enforce the project's commit rules:
+Three local hooks in [`.githooks/`](.githooks) enforce the project's commit rules:
 
 | Hook         | What it checks                                                                                                                                                                  |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pre-commit` | Runs `cargo fmt --check` on staged Rust/`Cargo.*` files, rejects any staged Rust file containing comments / `unsafe` / `unwrap` / `expect` / `panic!`, then runs `cargo clippy`. |
 | `commit-msg` | Validates the commit subject against this convention.                                                                                                                           |
+| `pre-push`   | Runs `cargo check --all-targets --all-features` with `-D warnings` to catch dead-code and lint errors before they hit CI.                                                       |
 
 Enable them once per clone:
 
