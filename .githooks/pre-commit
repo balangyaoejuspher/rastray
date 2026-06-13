@@ -44,8 +44,7 @@ if [ -n "$STAGED_RS" ]; then
 fi
 
 printf "[pre-commit] cargo clippy\n"
-if ! cargo clippy --all-targets --all-features --quiet -- -D warnings 2>/dev/null; then
-    printf "${YELLOW}[pre-commit] cargo clippy could not run (likely missing linker). Skipping.${RESET}\n" >&2
-fi
+cargo clippy --all-targets --all-features --quiet -- -D warnings || \
+    fail "cargo clippy failed. Fix the warnings above and re-stage."
 
 exit 0

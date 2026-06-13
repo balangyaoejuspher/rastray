@@ -17,19 +17,7 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 printf "[pre-push] cargo check --all-targets --all-features (with -D warnings)\n"
-OUTPUT_FILE=$(mktemp 2>/dev/null || echo "$TMP/rastray-pre-push.$$")
-if RUSTFLAGS="-D warnings" cargo check --all-targets --all-features >"$OUTPUT_FILE" 2>&1; then
-    rm -f "$OUTPUT_FILE"
-    exit 0
-fi
+RUSTFLAGS="-D warnings" cargo check --all-targets --all-features || \
+    fail "cargo check failed. Fix the warnings above before pushing."
 
-if grep -qE "linker .* not found|link\.exe.* not found|linking with .* failed|ensure that Visual Studio|C\+\+ build tools" "$OUTPUT_FILE"; then
-    printf "${YELLOW}[pre-push] cargo check cannot link locally (missing C/C++ toolchain).${RESET}\n" >&2
-    printf "${YELLOW}[pre-push] CI will be the only build gate for this push. Proceeding.${RESET}\n" >&2
-    rm -f "$OUTPUT_FILE"
-    exit 0
-fi
-
-cat "$OUTPUT_FILE" >&2
-rm -f "$OUTPUT_FILE"
-fail "cargo check failed. CI will reject this push. Fix the warnings above."
+exit 0
