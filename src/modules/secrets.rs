@@ -181,3 +181,97 @@ fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
     }
     (line, col)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn byte_offset_at_start_is_line_1_col_1() {
+        assert_eq!(byte_offset_to_line_col("hello", 0), (1, 1));
+    }
+
+    #[test]
+    fn byte_offset_advances_column_within_line() {
+        assert_eq!(byte_offset_to_line_col("hello", 3), (1, 4));
+    }
+
+    #[test]
+    fn byte_offset_after_newline_advances_line_resets_column() {
+        let text = "ab\ncd";
+        assert_eq!(byte_offset_to_line_col(text, 3), (2, 1));
+        assert_eq!(byte_offset_to_line_col(text, 4), (2, 2));
+    }
+
+    #[test]
+    fn byte_offset_handles_multiple_newlines() {
+        let text = "a\nb\nc";
+        assert_eq!(byte_offset_to_line_col(text, 4), (3, 1));
+    }
+
+    #[test]
+    fn all_builtin_patterns_compile() {
+        let result = compiled_patterns();
+        assert!(result.is_ok());
+        if let Ok(patterns) = result {
+            assert_eq!(patterns.len(), PATTERN_SPECS.len());
+            assert!(patterns.len() >= 8);
+        }
+    }
+
+    #[test]
+    fn aws_pattern_matches_canonical_example() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let aws = patterns.iter().find(|p| p.code == "RSTR-SEC-001");
+        assert!(aws.is_some());
+        if let Some(p) = aws {
+            assert!(p.regex.is_match("AKIAIOSFODNN7EXAMPLE"));
+            assert!(!p.regex.is_match("AKIA"));
+            assert!(!p.regex.is_match("akiaiosfodnn7example"));
+        }
+    }
+
+    #[test]
+    fn github_pat_pattern_distinguishes_classic_and_fine_grained() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let classic = patterns.iter().find(|p| p.code == "RSTR-SEC-002");
+        let fine = patterns.iter().find(|p| p.code == "RSTR-SEC-003");
+        assert!(classic.is_some());
+        assert!(fine.is_some());
+        if let (Some(c), Some(f)) = (classic, fine) {
+            let classic_token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz";
+            assert!(c.regex.is_match(classic_token));
+            assert!(!f.regex.is_match(classic_token));
+        }
+    }
+
+    #[test]
+    fn pem_private_key_marker_matches_common_variants() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let pem = patterns.iter().find(|p| p.code == "RSTR-SEC-007");
+        assert!(pem.is_some());
+        if let Some(p) = pem {
+            assert!(p.regex.is_match("-----BEGIN RSA PRIVATE KEY-----"));
+            assert!(p.regex.is_match("-----BEGIN PRIVATE KEY-----"));
+            assert!(p.regex.is_match("-----BEGIN EC PRIVATE KEY-----"));
+            assert!(p.regex.is_match("-----BEGIN OPENSSH PRIVATE KEY-----"));
+        }
+    }
+
+    #[test]
+    fn is_scannable_includes_manifest_source_config() {
+        assert!(is_scannable(FileKind::Manifest));
+        assert!(is_scannable(FileKind::Source));
+        assert!(is_scannable(FileKind::Config));
+        assert!(!is_scannable(FileKind::Other));
+    }
+}
