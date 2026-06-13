@@ -16,8 +16,9 @@ curl -fsSL \
   -o .github/workflows/rastray.yml
 ```
 
-Commit and push. The first run will install rastray with `cargo install` and
-cache the resulting binary for subsequent runs.
+Commit and push. The first run will install rastray from the prebuilt
+release via the shell installer and cache the resulting binary for
+subsequent runs.
 
 ## What it does
 
@@ -61,4 +62,4 @@ requires GitHub Advanced Security.
 | Skip the network (OSV vuln lookups)   | Pass `--offline`.                                               |
 | Scan a subdirectory                   | Replace `.` with the path you want.                             |
 | Commit per-repo policy                | Drop a `.rastray.toml` at the repo root (see [`../config/`](../config/)). |
-| Pin to a specific rastray version     | Replace `cargo install --git …` with `cargo install rastray --version X.Y.Z` once published to crates.io. |
+| Pin to a specific rastray version     | Set `RASTRAY_VERSION=X.Y.Z` before the installer invocation, or replace the installer with `cargo install rastray --version X.Y.Z --locked`. |

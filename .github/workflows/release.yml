@@ -12,7 +12,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -56,6 +56,100 @@ jobs:
 
       - name: cargo package
         run: cargo package --locked
+
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: verify
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive: zip
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rastray-bin-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Stage artifact (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="rastray-v${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/${NAME}"
+          cp "target/${{ matrix.target }}/release/rastray" "dist/${NAME}/"
+          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "dist/${NAME}/"
+          tar -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
+          (cd dist && shasum -a 256 "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+
+      - name: Stage artifact (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          $name = "rastray-v$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path "dist/$name" -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/rastray.exe" "dist/$name/"
+          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE, CHANGELOG.md "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -FilePath "dist/$name.zip.sha256" -Encoding ascii
+
+      - name: Upload artifacts to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            dist/rastray-*.tar.gz
+            dist/rastray-*.tar.gz.sha256
+            dist/rastray-*.zip
+            dist/rastray-*.zip.sha256
+          fail_on_unmatched_files: false
+
+  installers:
+    name: Publish installer scripts
+    needs: binaries
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Upload installers to release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            install/install.sh
+            install/install.ps1
+          fail_on_unmatched_files: true
 
   publish:
     name: Publish to crates.io
