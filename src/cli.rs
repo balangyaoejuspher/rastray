@@ -74,6 +74,12 @@ pub struct Cli {
     #[arg(long = "output", short = 'o', value_name = "FILE")]
     pub output: Option<PathBuf>,
 
+    #[arg(long = "config", value_name = "FILE")]
+    pub config: Option<PathBuf>,
+
+    #[arg(long = "no-config", default_value_t = false)]
+    pub no_config: bool,
+
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
 
