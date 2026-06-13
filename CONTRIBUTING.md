@@ -95,3 +95,20 @@ Prerequisites match the README: Rust ≥ 1.86.0 and a working C/C++ toolchain (M
 ## Code of Conduct
 
 Be respectful. Disagreements are fine; personal attacks are not. The maintainer reserves the right to lock issues, close PRs, and block users at their discretion. A formal Code of Conduct will be added if the project's surface area grows enough to need one.
+
+---
+
+## Release process (maintainer)
+
+Releases are tag-driven and run via [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+1. Land all PRs for the release on `main`.
+2. Bump `version` in [`Cargo.toml`](Cargo.toml). Run `cargo update -p rastray` so `Cargo.lock` agrees.
+3. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it. Update the link references at the bottom of the file.
+4. Open a release-prep PR titled `chore(release): vX.Y.Z` and merge it.
+5. Tag the merge commit: `git tag -s vX.Y.Z -m "vX.Y.Z"` and `git push origin vX.Y.Z`.
+6. The `release` workflow runs `cargo fmt --check`, `cargo clippy`, `cargo test`, `cargo package --locked`, then `cargo publish --locked` against `crates.io`. Verify on <https://crates.io/crates/rastray>.
+
+Dry-run before tagging: trigger the workflow manually with `dry_run = true` (the default) to run everything except the upload step.
+
+A `CARGO_REGISTRY_TOKEN` secret must be configured on the `crates-io` GitHub Environment. The token should be a scoped publish token for the `rastray` crate, not a personal master token.
