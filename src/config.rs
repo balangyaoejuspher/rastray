@@ -5,7 +5,7 @@ use ignore::gitignore::GitignoreBuilder;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::cli::Severity;
+use crate::cli::{FailOn, Severity};
 use crate::reporter::Finding;
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -116,12 +116,12 @@ impl Config {
         &self.scan.ignore.paths
     }
 
-    pub fn fail_on(&self) -> Option<Severity> {
+    pub fn fail_on(&self) -> Option<FailOn> {
         let raw = self.scan.fail_on.as_deref()?;
-        if raw.eq_ignore_ascii_case("none") {
-            None
+        if raw.eq_ignore_ascii_case("none") || raw.eq_ignore_ascii_case("never") {
+            Some(FailOn::Never)
         } else {
-            parse_severity(raw)
+            parse_severity(raw).map(FailOn::AtOrAbove)
         }
     }
 
@@ -150,7 +150,10 @@ impl Config {
 
     fn validate(&self, path: &Path) -> Result<(), ConfigError> {
         if let Some(s) = &self.scan.fail_on {
-            if !s.eq_ignore_ascii_case("none") && parse_severity(s).is_none() {
+            if !s.eq_ignore_ascii_case("none")
+                && !s.eq_ignore_ascii_case("never")
+                && parse_severity(s).is_none()
+            {
                 return Err(ConfigError::InvalidSeverity {
                     path: path.to_path_buf(),
                     value: s.clone(),
@@ -255,7 +258,7 @@ mod tests {
             Ok(c) => c,
             Err(_) => return,
         };
-        assert_eq!(cfg.fail_on(), Some(Severity::High));
+        assert_eq!(cfg.fail_on(), Some(FailOn::AtOrAbove(Severity::High)));
     }
 
     #[test]
@@ -269,7 +272,21 @@ mod tests {
             Ok(c) => c,
             Err(_) => return,
         };
-        assert_eq!(cfg.fail_on(), None);
+        assert_eq!(cfg.fail_on(), Some(FailOn::Never));
+    }
+
+    #[test]
+    fn load_parses_fail_on_never() {
+        let dir = match tempdir() {
+            Some(d) => d,
+            None => return,
+        };
+        let path = write_config(&dir, "[scan]\nfail_on = \"never\"\n");
+        let cfg = match Config::load(&path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        assert_eq!(cfg.fail_on(), Some(FailOn::Never));
     }
 
     #[test]
