@@ -28,7 +28,35 @@ Most security/dep/perf tools in the polyglot world fall into one of three bucket
 
 ## Installation
 
-### Prerequisites
+### Prebuilt binaries _(recommended)_
+
+Each release attaches statically-linked binaries for the common
+platforms. The shell installer downloads, checksum-verifies, and
+extracts the right archive for your OS / arch:
+
+**Linux / macOS**
+
+```sh
+curl -fsSL https://github.com/balangyaoejuspher/rastray/releases/latest/download/install.sh | sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://github.com/balangyaoejuspher/rastray/releases/latest/download/install.ps1 | iex
+```
+
+Both installers honor `RASTRAY_VERSION` (e.g. `0.1.0`) and
+`RASTRAY_INSTALL_DIR`. See [`install/README.md`](install/README.md) for
+details.
+
+### From crates.io
+
+```sh
+cargo install rastray --locked
+```
+
+### Prerequisites _(for source builds)_
 
 - **Rust** 1.86.0 or newer (`rustup default stable`)
 - A working C/C++ toolchain for linking:
@@ -43,12 +71,6 @@ git clone https://github.com/balangyaoejuspher/rastray.git
 cd rastray
 cargo build --release
 # Binary lands at ./target/release/rastray
-```
-
-### From crates.io _(once published)_
-
-```sh
-cargo install rastray
 ```
 
 ---

@@ -36,7 +36,8 @@ jobs:
       - name: Install rastray
         run: |
           if ! command -v rastray >/dev/null 2>&1; then
-            cargo install --git https://github.com/balangyaoejuspher/rastray --locked
+            curl -fsSL https://github.com/balangyaoejuspher/rastray/releases/latest/download/install.sh | sh
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
 
       - name: Run rastray (inline PR annotations)

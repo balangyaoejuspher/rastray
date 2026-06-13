@@ -16,6 +16,7 @@ exclude = [
     ".github/**",
     ".editorconfig",
     "COMMIT_CONVENTION.md",
+    "install/**",
     "rust-toolchain.toml",
 ]
 
