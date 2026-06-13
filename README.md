@@ -99,6 +99,7 @@ rastray -vv
 | `--max-depth <N>`        | unlimited | Cap directory recursion depth.                                                              |
 | `--config <FILE>`        | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one. |
 | `--no-config`            | off       | Skip config-file discovery and loading.                                                     |
+| `--fail-on <LEVEL>`      | inherited | Exit code 1 if any finding is at or above this severity. One of: `info`, `low`, `medium`, `high`, `critical`, `never`. Defaults to `--min-severity`. Overrides `[scan].fail_on` in config. |
 | `-v`, `--verbose`        | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                               |
 | `-q`, `--quiet`          | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                           |
 
@@ -127,9 +128,14 @@ paths = ["target/**", "dist/**", "vendor/**"]
 
 | Code | Meaning                                                                |
 | ---- | ---------------------------------------------------------------------- |
-| `0`  | Scan completed; **no findings** at or above `--min-severity`.          |
-| `1`  | Scan completed; **at least one finding** at or above `--min-severity`. |
+| `0`  | Scan completed; **no findings** at or above the fail-on threshold.     |
+| `1`  | Scan completed; **at least one finding** at or above the fail-on threshold. |
 | `2`  | **Runtime error** (I/O failure, malformed input, configuration error). |
+
+The fail-on threshold defaults to `--min-severity` and can be overridden
+via `--fail-on <LEVEL>` or `[scan].fail_on` in `.rastray.toml`. Use
+`--fail-on never` (or `fail_on = "never"`) to always exit `0` regardless
+of findings — useful for advisory CI runs.
 
 Wire it into CI as:
 

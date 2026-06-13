@@ -168,3 +168,89 @@ fn scan_with_no_secrets_produces_zero_findings() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+fn run_exit_code(dir: &Path, extra_args: &[&str]) -> Option<i32> {
+    let bin = binary_path();
+    if !bin.exists() {
+        return None;
+    }
+    let mut cmd = Command::new(&bin);
+    cmd.arg(dir).arg("--format").arg("json");
+    for arg in extra_args {
+        cmd.arg(arg);
+    }
+    let output = cmd.output().ok()?;
+    output.status.code()
+}
+
+#[test]
+fn fail_on_never_returns_zero_even_with_findings() {
+    let dir = match make_fixture("fail-on-never") {
+        Some(d) => d,
+        None => return,
+    };
+    write_file(
+        &dir,
+        "src.rs",
+        "fn build() { for i in 0..10 { let _ = format!(\"{i}\"); } }\n",
+    );
+
+    let code = match run_exit_code(&dir, &["--fail-on", "never"]) {
+        Some(c) => c,
+        None => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    assert_eq!(code, 0);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn fail_on_high_returns_zero_when_only_medium_findings_exist() {
+    let dir = match make_fixture("fail-on-high-clean") {
+        Some(d) => d,
+        None => return,
+    };
+    write_file(
+        &dir,
+        "src.rs",
+        "fn build() { for i in 0..10 { let _ = format!(\"{i}\"); } }\n",
+    );
+
+    let code = match run_exit_code(&dir, &["--fail-on", "high"]) {
+        Some(c) => c,
+        None => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    assert_eq!(code, 0);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn fail_on_medium_returns_one_when_medium_findings_exist() {
+    let dir = match make_fixture("fail-on-medium-dirty") {
+        Some(d) => d,
+        None => return,
+    };
+    write_file(
+        &dir,
+        "src.rs",
+        "fn build() { for i in 0..10 { let _ = format!(\"{i}\"); } }\n",
+    );
+
+    let code = match run_exit_code(&dir, &["--fail-on", "medium"]) {
+        Some(c) => c,
+        None => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    assert_eq!(code, 1);
+
+    let _ = fs::remove_dir_all(&dir);
+}

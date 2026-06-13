@@ -49,6 +49,29 @@ pub enum OutputFormat {
     Sarif,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailOn {
+    Never,
+    AtOrAbove(Severity),
+}
+
+impl FailOn {
+    pub fn as_threshold(self) -> Option<Severity> {
+        match self {
+            FailOn::Never => None,
+            FailOn::AtOrAbove(s) => Some(s),
+        }
+    }
+}
+
+fn parse_fail_on(s: &str) -> Result<FailOn, String> {
+    if s.eq_ignore_ascii_case("never") || s.eq_ignore_ascii_case("none") {
+        Ok(FailOn::Never)
+    } else {
+        s.parse::<Severity>().map(FailOn::AtOrAbove)
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "rastray",
@@ -79,6 +102,9 @@ pub struct Cli {
 
     #[arg(long = "no-config", default_value_t = false)]
     pub no_config: bool,
+
+    #[arg(long = "fail-on", value_name = "LEVEL", value_parser = parse_fail_on)]
+    pub fail_on: Option<FailOn>,
 
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,

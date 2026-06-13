@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::cli::{Cli, Severity};
+use crate::cli::{Cli, FailOn, Severity};
 use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::modules::{default_registry, Analyzer, AnalyzerError};
@@ -108,10 +108,9 @@ fn run(cli: Cli) -> Result<u8, AppError> {
 
     report.render(format, cli.output.as_deref())?;
 
-    let exit_code = if report.has_at_or_above(min_severity) {
-        exit::FINDINGS
-    } else {
-        exit::OK
+    let exit_code = match resolve_fail_threshold(&cli, &config) {
+        Some(threshold) if report.has_at_or_above(threshold) => exit::FINDINGS,
+        _ => exit::OK,
     };
 
     Ok(exit_code)
@@ -158,5 +157,14 @@ fn load_config(cli: &Cli) -> Result<Config, ConfigError> {
     match Config::discover(&cli.path) {
         Some(path) => Config::load(&path),
         None => Ok(Config::default()),
+    }
+}
+
+fn resolve_fail_threshold(cli: &Cli, config: &Config) -> Option<Severity> {
+    let setting = cli.fail_on.or_else(|| config.fail_on());
+    match setting {
+        Some(FailOn::Never) => None,
+        Some(FailOn::AtOrAbove(sev)) => Some(sev),
+        None => Some(cli.min_severity),
     }
 }
