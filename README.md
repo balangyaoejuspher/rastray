@@ -230,7 +230,7 @@ rastray --min-severity high || exit $?
 }
 ```
 
-The schema is considered **stable within a minor version** once Phase 2 ships.
+The JSON output is considered **stable within a minor version** and follows semantic versioning. See [`CHANGELOG.md`](CHANGELOG.md) for any schema additions.
 
 ---
 
@@ -258,22 +258,18 @@ strict, monorepo) are in [`examples/config/`](examples/config/).
 - No `unwrap` / `expect` / `panic!` in user-facing code paths.
 - TLS via `rustls` only — no OpenSSL surface area.
 - Minimal default feature flags on `tokio` and `reqwest` to keep the dependency graph small.
-- Pinned MSRV (`1.85.0`).
+- Pinned MSRV (`1.86.0`).
 
-To report a vulnerability, please **do not** open a public issue. See `SECURITY.md` _(coming soon)_ for the disclosure process.
+To report a vulnerability, please **do not** open a public issue. See [`SECURITY.md`](SECURITY.md) for the disclosure process.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. A few house rules:
-
-- **No comments in source code.** This project deliberately ships zero comments — code must be self-documenting via clear naming. Doc-comments, inline `//` notes, and `TODO` markers will be rejected at review.
-- Keep modules small and focused; one analyzer per file.
-- Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings` before opening a PR.
-- Any new dependency must be justified in the PR description against the existing dependency budget.
-
-A fuller `CONTRIBUTING.md` will land alongside Phase 2.
+`rastray` is currently source-available but **closed to external code contributions**
+while the architecture stabilises. Bug reports, security reports, feature requests,
+and forks are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full policy
+and the rules that apply to pre-approved pull requests.
 
 ---
 
