@@ -158,6 +158,7 @@ impl Report {
         match format {
             OutputFormat::Json => render_json(self),
             OutputFormat::Human => render_human(self),
+            OutputFormat::GhActions => render_gh_actions(self),
         }
     }
 }
@@ -182,6 +183,61 @@ fn render_json(report: &Report) -> Result<(), ReporterError> {
     let payload = serde_json::to_string_pretty(report)?;
     println!("{payload}");
     Ok(())
+}
+
+fn render_gh_actions(report: &Report) -> Result<(), ReporterError> {
+    for finding in &report.findings {
+        println!("{}", gh_actions_line(finding));
+    }
+    Ok(())
+}
+
+fn gh_actions_line(finding: &Finding) -> String {
+    let kind = match finding.severity {
+        Severity::Critical | Severity::High => "error",
+        Severity::Medium => "warning",
+        Severity::Low | Severity::Info => "notice",
+    };
+
+    let mut params: Vec<String> = Vec::new();
+    if let Some(loc) = &finding.location {
+        let file = loc.file.display().to_string();
+        params.push(format!("file={}", escape_gh_property(&file)));
+        if let Some(line) = loc.line {
+            params.push(format!("line={line}"));
+        }
+        if let Some(col) = loc.column {
+            params.push(format!("col={col}"));
+        }
+    }
+    params.push(format!(
+        "title={}",
+        escape_gh_property(&format!("rastray::{}", finding.code))
+    ));
+
+    let message = escape_gh_data(&finding.message);
+
+    if params.is_empty() {
+        format!("::{kind}::{message}")
+    } else {
+        format!("::{kind} {}::{message}", params.join(","))
+    }
+}
+
+fn escape_gh_property(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
+}
+
+fn escape_gh_data(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
 }
 
 fn render_human(report: &Report) -> Result<(), ReporterError> {
@@ -453,6 +509,95 @@ mod tests {
         report.push(finding(Severity::Low, Category::Secret));
         assert!(report.has_at_or_above(Severity::Low));
         assert!(!report.has_at_or_above(Severity::Medium));
+    }
+
+    fn finding_with_location(
+        severity: Severity,
+        message: &str,
+        path: &str,
+        line: usize,
+        col: usize,
+    ) -> Finding {
+        Finding::new("RSTR-TST-100", message, severity, Category::Secret)
+            .with_location(Location::file(path).with_line(line, col))
+    }
+
+    #[test]
+    fn gh_actions_line_uses_error_for_critical_and_high() {
+        let f = finding_with_location(Severity::Critical, "boom", "src/a.rs", 1, 1);
+        let line = gh_actions_line(&f);
+        assert!(line.starts_with("::error "));
+        let f = finding_with_location(Severity::High, "boom", "src/a.rs", 1, 1);
+        assert!(gh_actions_line(&f).starts_with("::error "));
+    }
+
+    #[test]
+    fn gh_actions_line_uses_warning_for_medium() {
+        let f = finding_with_location(Severity::Medium, "warn", "src/a.rs", 1, 1);
+        assert!(gh_actions_line(&f).starts_with("::warning "));
+    }
+
+    #[test]
+    fn gh_actions_line_uses_notice_for_low_and_info() {
+        let f = finding_with_location(Severity::Low, "note", "src/a.rs", 1, 1);
+        assert!(gh_actions_line(&f).starts_with("::notice "));
+        let f = finding_with_location(Severity::Info, "note", "src/a.rs", 1, 1);
+        assert!(gh_actions_line(&f).starts_with("::notice "));
+    }
+
+    #[test]
+    fn gh_actions_line_includes_file_line_col_when_present() {
+        let f = finding_with_location(Severity::High, "msg", "src/a.rs", 10, 5);
+        let line = gh_actions_line(&f);
+        assert!(line.contains("file=src/a.rs"));
+        assert!(line.contains("line=10"));
+        assert!(line.contains("col=5"));
+        assert!(line.ends_with("::msg"));
+    }
+
+    #[test]
+    fn gh_actions_line_emits_title_with_finding_code() {
+        let f = finding_with_location(Severity::High, "msg", "src/a.rs", 1, 1);
+        let line = gh_actions_line(&f);
+        assert!(line.contains("title=rastray%3A%3ARSTR-TST-100"));
+    }
+
+    #[test]
+    fn gh_actions_line_omits_location_when_none() {
+        let f = Finding::new(
+            "RSTR-TST-200",
+            "anywhere",
+            Severity::Medium,
+            Category::Crawler,
+        );
+        let line = gh_actions_line(&f);
+        assert!(line.starts_with("::warning "));
+        assert!(line.contains("title="));
+        assert!(!line.contains("file="));
+        assert!(line.ends_with("::anywhere"));
+    }
+
+    #[test]
+    fn escape_gh_property_encodes_separators_and_control_chars() {
+        assert_eq!(escape_gh_property("a,b"), "a%2Cb");
+        assert_eq!(escape_gh_property("a:b"), "a%3Ab");
+        assert_eq!(escape_gh_property("a%b"), "a%25b");
+        assert_eq!(escape_gh_property("a\nb"), "a%0Ab");
+        assert_eq!(escape_gh_property("a\rb"), "a%0Db");
+    }
+
+    #[test]
+    fn escape_gh_data_keeps_colons_and_commas_but_encodes_newlines() {
+        assert_eq!(escape_gh_data("a,b:c"), "a,b:c");
+        assert_eq!(escape_gh_data("multi\nline"), "multi%0Aline");
+        assert_eq!(escape_gh_data("100%"), "100%25");
+    }
+
+    #[test]
+    fn gh_actions_line_escapes_messages_with_newlines() {
+        let f = finding_with_location(Severity::High, "first\nsecond", "src/a.rs", 1, 1);
+        let line = gh_actions_line(&f);
+        assert!(line.ends_with("::first%0Asecond"));
     }
 }
 
