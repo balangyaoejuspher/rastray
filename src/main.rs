@@ -59,12 +59,14 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     let total_start = std::time::Instant::now();
     let format = cli.effective_format();
     let min_severity = cli.min_severity;
+    let summary_only = cli.summary_only;
 
     let walk_start = std::time::Instant::now();
     let crawl = crawler::walk_project(&cli)?;
     let walk_ms = walk_start.elapsed().as_millis() as u64;
 
     let mut report = Report::new();
+    report.summary_only = summary_only;
     populate_stats(&mut report, &crawl);
 
     for err in &crawl.errors {

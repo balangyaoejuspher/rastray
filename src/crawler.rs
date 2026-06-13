@@ -176,6 +176,10 @@ fn classify_path(path: &Path) -> FileKind {
         return FileKind::Manifest;
     }
 
+    if is_dotfile_config(&file_name) {
+        return FileKind::Config;
+    }
+
     let extension = path
         .extension()
         .and_then(|s| s.to_str())
@@ -191,6 +195,10 @@ fn classify_path(path: &Path) -> FileKind {
     }
 
     FileKind::Other
+}
+
+fn is_dotfile_config(file_name: &str) -> bool {
+    file_name == ".env" || file_name == ".envrc" || file_name.starts_with(".env.")
 }
 
 const MANIFEST_FILES: &[&str] = &[

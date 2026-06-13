@@ -110,6 +110,8 @@ pub struct Report {
     pub findings: Vec<Finding>,
     pub stats: ReportStats,
     pub perf: ReportPerf,
+    #[serde(skip)]
+    pub summary_only: bool,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -185,7 +187,7 @@ fn render_json(report: &Report) -> Result<(), ReporterError> {
 fn render_human(report: &Report) -> Result<(), ReporterError> {
     print_summary_block(report);
 
-    if report.findings.is_empty() {
+    if report.findings.is_empty() || report.summary_only {
         return Ok(());
     }
 
