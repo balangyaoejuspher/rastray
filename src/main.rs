@@ -5,6 +5,7 @@ mod config;
 mod crawler;
 mod modules;
 mod reporter;
+mod suppression;
 
 use std::process::ExitCode;
 
@@ -16,6 +17,7 @@ use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::modules::{default_registry, Analyzer, AnalyzerError};
 use crate::reporter::{Category, Finding, Report, ReporterError};
+use crate::suppression::Suppressions;
 
 #[derive(Debug, Error, Diagnostic)]
 enum AppError {
@@ -94,6 +96,9 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     let analyze_ms = analyze_start.elapsed().as_millis() as u64;
 
     config.apply(&mut report.findings, &cli.path);
+
+    let mut suppressions = Suppressions::new();
+    suppressions.apply(&mut report.findings);
 
     report.apply_min_severity(min_severity);
 
