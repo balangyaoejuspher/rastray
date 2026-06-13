@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod cli;
+mod config;
 mod crawler;
 mod modules;
 mod reporter;
@@ -11,6 +12,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::cli::{Cli, Severity};
+use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::modules::{default_registry, Analyzer, AnalyzerError};
 use crate::reporter::{Category, Finding, Report, ReporterError};
@@ -24,6 +26,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::report))]
     Report(#[from] ReporterError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::config))]
+    Config(#[from] ConfigError),
 }
 
 mod exit {
@@ -61,6 +67,8 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     let min_severity = cli.min_severity;
     let summary_only = cli.summary_only;
 
+    let config = load_config(&cli)?;
+
     let walk_start = std::time::Instant::now();
     let crawl = crawler::walk_project(&cli)?;
     let walk_ms = walk_start.elapsed().as_millis() as u64;
@@ -84,6 +92,8 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     let analyze_start = std::time::Instant::now();
     run_analyzers(&cli, &crawl, &mut report);
     let analyze_ms = analyze_start.elapsed().as_millis() as u64;
+
+    config.apply(&mut report.findings, &cli.path);
 
     report.apply_min_severity(min_severity);
 
@@ -131,4 +141,17 @@ fn analyzer_error_finding(analyzer: &(dyn Analyzer + Send + Sync), err: Analyzer
         Category::Internal,
     )
     .with_help("re-run with --verbose for additional context")
+}
+
+fn load_config(cli: &Cli) -> Result<Config, ConfigError> {
+    if cli.no_config {
+        return Ok(Config::default());
+    }
+    if let Some(path) = &cli.config {
+        return Config::load(path);
+    }
+    match Config::discover(&cli.path) {
+        Some(path) => Config::load(&path),
+        None => Ok(Config::default()),
+    }
 }

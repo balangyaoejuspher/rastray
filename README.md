@@ -97,8 +97,29 @@ rastray -vv
 | `--follow-links`         | off       | Follow symlinks during the walk.                                                            |
 | `-j`, `--threads <N>`    | auto      | Worker thread count for the parallel crawler.                                               |
 | `--max-depth <N>`        | unlimited | Cap directory recursion depth.                                                              |
+| `--config <FILE>`        | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one. |
+| `--no-config`            | off       | Skip config-file discovery and loading.                                                     |
 | `-v`, `--verbose`        | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                               |
 | `-q`, `--quiet`          | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                           |
+
+### Configuration file
+
+If a `.rastray.toml` file exists in the scan directory (or any ancestor),
+rastray loads it automatically. Use `--config` to point at a specific file
+or `--no-config` to skip loading entirely.
+
+```toml
+[scan]
+fail_on = "high"            # exit non-zero only on findings >= high (default: any)
+
+[scan.ignore]
+paths = ["target/**", "dist/**", "vendor/**"]
+
+[rules]
+"RSTR-SEC-005" = false                          # disable a rule entirely
+"RSTR-PERF-001" = { severity = "low" }          # downgrade a rule's severity
+"RSTR-PERF-002" = { enabled = false }           # explicit form
+```
 
 ### Exit codes
 
