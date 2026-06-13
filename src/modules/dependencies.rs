@@ -49,6 +49,22 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_python_requirements(crawl) {
+            if let Ok(pkgs) = read_python_requirements(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_go_sum_files(crawl) {
+            if let Ok(pkgs) = read_go_sum(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         if packages.is_empty() {
             return Ok(Vec::new());
         }
@@ -89,6 +105,14 @@ fn collect_cargo_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_npm_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "package-lock.json")
+}
+
+fn collect_python_requirements(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "requirements.txt")
+}
+
+fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "go.sum")
 }
 
 fn collect_manifests_named(crawl: &CrawlSummary, target_name: &str) -> Vec<PathBuf> {
@@ -220,6 +244,91 @@ fn derive_npm_name(key: &str) -> Option<String> {
         return None;
     }
     Some(last.to_string())
+}
+
+fn read_python_requirements(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut packages = Vec::new();
+    for raw_line in contents.lines() {
+        if let Some(pkg) = parse_python_requirement_line(raw_line) {
+            packages.push(pkg);
+        }
+    }
+    Ok(packages)
+}
+
+fn parse_python_requirement_line(line: &str) -> Option<Package> {
+    let trimmed = strip_python_comment(line).trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('-')
+        || trimmed.starts_with('@')
+        || trimmed.starts_with("git+")
+        || trimmed.starts_with("http")
+    {
+        return None;
+    }
+
+    let (name_part, version_part) = trimmed.split_once("==")?;
+    let name = name_part.split(['[', ' ', '\t']).next()?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let version = version_part
+        .split([';', ' ', '\t', '#'])
+        .next()?
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'');
+    if version.is_empty() {
+        return None;
+    }
+    Some(Package {
+        ecosystem: "PyPI",
+        name: name.to_string(),
+        version: version.to_string(),
+    })
+}
+
+fn strip_python_comment(line: &str) -> &str {
+    line.split_once('#').map(|(head, _)| head).unwrap_or(line)
+}
+
+fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut packages = Vec::new();
+    for raw_line in contents.lines() {
+        if let Some(pkg) = parse_go_sum_line(raw_line) {
+            let key = (pkg.name.clone(), pkg.version.clone());
+            if seen.insert(key) {
+                packages.push(pkg);
+            }
+        }
+    }
+    Ok(packages)
+}
+
+fn parse_go_sum_line(line: &str) -> Option<Package> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut parts = trimmed.split_ascii_whitespace();
+    let name = parts.next()?;
+    let version_field = parts.next()?;
+    let _hash = parts.next()?;
+
+    let version = version_field
+        .strip_suffix("/go.mod")
+        .unwrap_or(version_field);
+    if !version.starts_with('v') {
+        return None;
+    }
+    Some(Package {
+        ecosystem: "Go",
+        name: name.to_string(),
+        version: version.to_string(),
+    })
 }
 
 #[derive(Debug)]
@@ -691,5 +800,132 @@ mod tests {
             Some("bar".to_string())
         );
         assert_eq!(derive_npm_name(""), None);
+    }
+
+    #[test]
+    fn parse_python_requirement_line_accepts_pinned_version() {
+        let pkg = parse_python_requirement_line("requests==2.31.0").unwrap_or(Package {
+            ecosystem: "",
+            name: String::new(),
+            version: String::new(),
+        });
+        assert_eq!(pkg.ecosystem, "PyPI");
+        assert_eq!(pkg.name, "requests");
+        assert_eq!(pkg.version, "2.31.0");
+    }
+
+    #[test]
+    fn parse_python_requirement_line_strips_extras_and_environment_markers() {
+        let pkg =
+            parse_python_requirement_line("django[postgresql]==4.2.0; python_version >= '3.8'")
+                .unwrap_or(Package {
+                    ecosystem: "",
+                    name: String::new(),
+                    version: String::new(),
+                });
+        assert_eq!(pkg.name, "django");
+        assert_eq!(pkg.version, "4.2.0");
+    }
+
+    #[test]
+    fn parse_python_requirement_line_strips_inline_comment() {
+        let pkg =
+            parse_python_requirement_line("flask==2.3.0  # web framework").unwrap_or(Package {
+                ecosystem: "",
+                name: String::new(),
+                version: String::new(),
+            });
+        assert_eq!(pkg.name, "flask");
+        assert_eq!(pkg.version, "2.3.0");
+    }
+
+    #[test]
+    fn parse_python_requirement_line_rejects_non_pinned_specifiers() {
+        assert!(parse_python_requirement_line("requests>=2.0").is_none());
+        assert!(parse_python_requirement_line("requests~=2.0").is_none());
+        assert!(parse_python_requirement_line("requests").is_none());
+    }
+
+    #[test]
+    fn parse_python_requirement_line_rejects_directives_and_blanks() {
+        assert!(parse_python_requirement_line("").is_none());
+        assert!(parse_python_requirement_line("# a comment").is_none());
+        assert!(parse_python_requirement_line("-r other.txt").is_none());
+        assert!(parse_python_requirement_line("--index-url https://x").is_none());
+        assert!(parse_python_requirement_line("@ git+https://example.com/repo").is_none());
+        assert!(parse_python_requirement_line("https://example.com/pkg.whl").is_none());
+    }
+
+    #[test]
+    fn read_python_requirements_collects_all_pinned_lines() {
+        let body = "requests==2.31.0\nflask==2.3.0  # web\n# header\n-r other.txt\nnumpy>=1.0\n\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-py-req-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_python_requirements(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs.iter().all(|p| p.ecosystem == "PyPI"));
+    }
+
+    #[test]
+    fn parse_go_sum_line_accepts_module_version() {
+        let pkg = parse_go_sum_line(
+            "github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=",
+        )
+        .unwrap_or(Package {
+            ecosystem: "",
+            name: String::new(),
+            version: String::new(),
+        });
+        assert_eq!(pkg.ecosystem, "Go");
+        assert_eq!(pkg.name, "github.com/pkg/errors");
+        assert_eq!(pkg.version, "v0.9.1");
+    }
+
+    #[test]
+    fn parse_go_sum_line_strips_go_mod_suffix() {
+        let pkg = parse_go_sum_line(
+            "github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=",
+        )
+        .unwrap_or(Package {
+            ecosystem: "",
+            name: String::new(),
+            version: String::new(),
+        });
+        assert_eq!(pkg.name, "github.com/pkg/errors");
+        assert_eq!(pkg.version, "v0.9.1");
+    }
+
+    #[test]
+    fn parse_go_sum_line_rejects_invalid_versions() {
+        assert!(parse_go_sum_line("").is_none());
+        assert!(parse_go_sum_line("github.com/pkg/errors 1.0.0 h1:abc=").is_none());
+        assert!(parse_go_sum_line("github.com/pkg/errors").is_none());
+    }
+
+    #[test]
+    fn read_go_sum_deduplicates_pkg_and_go_mod_pairs() {
+        let body = "\
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
+";
+        let tmp = std::env::temp_dir().join(format!("rastray-go-sum-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_go_sum(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs.iter().all(|p| p.ecosystem == "Go"));
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "github.com/pkg/errors" && p.version == "v0.9.1"));
     }
 }
