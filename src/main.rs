@@ -82,7 +82,7 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     }
 
     let analyze_start = std::time::Instant::now();
-    run_analyzers(&crawl, &mut report);
+    run_analyzers(&cli, &crawl, &mut report);
     let analyze_ms = analyze_start.elapsed().as_millis() as u64;
 
     report.apply_min_severity(min_severity);
@@ -114,8 +114,8 @@ fn populate_stats(report: &mut Report, crawl: &CrawlSummary) {
     report.perf.bytes_scanned = crawl.files.iter().filter_map(|f| f.size).sum();
 }
 
-fn run_analyzers(crawl: &CrawlSummary, report: &mut Report) {
-    for analyzer in default_registry() {
+fn run_analyzers(cli: &Cli, crawl: &CrawlSummary, report: &mut Report) {
+    for analyzer in default_registry(cli) {
         match analyzer.analyze(crawl) {
             Ok(findings) => report.extend(findings),
             Err(err) => report.push(analyzer_error_finding(analyzer.as_ref(), err)),

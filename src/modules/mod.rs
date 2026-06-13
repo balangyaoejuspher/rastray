@@ -4,6 +4,7 @@ pub mod secrets;
 
 use thiserror::Error;
 
+use crate::cli::Cli;
 use crate::crawler::CrawlSummary;
 use crate::reporter::Finding;
 
@@ -19,10 +20,13 @@ pub trait Analyzer {
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError>;
 }
 
-pub fn default_registry() -> Vec<Box<dyn Analyzer + Send + Sync>> {
+pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
     vec![
         Box::new(secrets::SecretsAnalyzer::new()),
-        Box::new(dependencies::DependenciesAnalyzer::new()),
+        Box::new(dependencies::DependenciesAnalyzer::with_options(
+            cli.offline,
+            cli.no_cache,
+        )),
         Box::new(performance::PerformanceAnalyzer::new()),
     ]
 }

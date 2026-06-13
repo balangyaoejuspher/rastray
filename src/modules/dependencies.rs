@@ -1,6 +1,7 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Builder;
@@ -15,13 +16,22 @@ const OSV_BATCH_URL: &str = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN_URL: &str = "https://api.osv.dev/v1/vulns/";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const USER_AGENT: &str = concat!("rastray/", env!("CARGO_PKG_VERSION"));
+const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+const CACHE_FILE_NAME: &str = "osv-cache.json";
 
 #[derive(Debug, Default)]
-pub struct DependenciesAnalyzer;
+pub struct DependenciesAnalyzer {
+    offline: bool,
+    no_cache: bool,
+}
 
 impl DependenciesAnalyzer {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    pub fn with_options(offline: bool, no_cache: bool) -> Self {
+        Self { offline, no_cache }
     }
 }
 
@@ -69,21 +79,65 @@ impl Analyzer for DependenciesAnalyzer {
             return Ok(Vec::new());
         }
 
-        let runtime = Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| AnalyzerError::Failed {
-                name: "dependencies",
-                message: format!("could not start tokio runtime: {e}"),
-            })?;
+        let mut cache = if self.no_cache {
+            OsvCache::default()
+        } else {
+            OsvCache::load_or_default()
+        };
 
-        let results =
-            runtime
-                .block_on(query_osv_batch(&packages))
+        let now_secs = current_unix_secs();
+        let mut results: Vec<Vec<OsvVuln>> = Vec::with_capacity(packages.len());
+        let mut uncached_indices: Vec<usize> = Vec::new();
+        let mut uncached: Vec<&Package> = Vec::new();
+
+        for (idx, (_, pkg)) in packages.iter().enumerate() {
+            let key = cache_key(pkg);
+            if let Some(entry) = cache.entries.get(&key) {
+                if now_secs.saturating_sub(entry.fetched_at) < CACHE_TTL_SECS {
+                    results.push(entry.vulns.clone());
+                    continue;
+                }
+            }
+            results.push(Vec::new());
+            uncached_indices.push(idx);
+            uncached.push(pkg);
+        }
+
+        if !uncached.is_empty() && !self.offline {
+            let runtime = Builder::new_current_thread()
+                .enable_all()
+                .build()
                 .map_err(|e| AnalyzerError::Failed {
                     name: "dependencies",
-                    message: format!("OSV query failed: {e}"),
+                    message: format!("could not start tokio runtime: {e}"),
                 })?;
+
+            let fetched = runtime.block_on(query_osv_batch(&uncached)).map_err(|e| {
+                AnalyzerError::Failed {
+                    name: "dependencies",
+                    message: format!("OSV query failed: {e}"),
+                }
+            })?;
+
+            for (slot_idx, vulns) in uncached_indices.iter().zip(fetched) {
+                if let Some((_, pkg)) = packages.get(*slot_idx) {
+                    cache.entries.insert(
+                        cache_key(pkg),
+                        OsvCacheEntry {
+                            fetched_at: now_secs,
+                            vulns: vulns.clone(),
+                        },
+                    );
+                }
+                if let Some(slot) = results.get_mut(*slot_idx) {
+                    *slot = vulns;
+                }
+            }
+
+            if !self.no_cache {
+                let _ = cache.save();
+            }
+        }
 
         let mut findings = Vec::new();
         for (idx, vulns) in results.iter().enumerate() {
@@ -384,7 +438,7 @@ struct OsvVulnRef {
     id: String,
 }
 
-#[derive(Deserialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 struct OsvVuln {
     id: String,
     #[serde(default)]
@@ -397,25 +451,23 @@ struct OsvVuln {
     database_specific: Option<OsvDatabaseSpecific>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct OsvSeverity {
     #[serde(rename = "type")]
     kind: String,
     score: String,
 }
 
-#[derive(Deserialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 struct OsvDatabaseSpecific {
     #[serde(default)]
     severity: Option<String>,
 }
 
-async fn query_osv_batch(
-    packages: &[(PathBuf, Package)],
-) -> Result<Vec<Vec<OsvVuln>>, reqwest::Error> {
+async fn query_osv_batch(packages: &[&Package]) -> Result<Vec<Vec<OsvVuln>>, reqwest::Error> {
     let queries: Vec<OsvQuery> = packages
         .iter()
-        .map(|(_, p)| OsvQuery {
+        .map(|p| OsvQuery {
             package: OsvPackage {
                 ecosystem: p.ecosystem,
                 name: &p.name,
@@ -535,6 +587,72 @@ fn advisory_url(id: &str) -> String {
         format!("https://github.com/advisories/{id}")
     } else {
         format!("https://osv.dev/vulnerability/{id}")
+    }
+}
+
+fn cache_key(pkg: &Package) -> String {
+    format!("{}::{}::{}", pkg.ecosystem, pkg.name, pkg.version)
+}
+
+fn current_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    if let Ok(override_path) = std::env::var("RASTRAY_CACHE_DIR") {
+        return Some(PathBuf::from(override_path));
+    }
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        return Some(PathBuf::from(local_app_data).join("rastray"));
+    }
+    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+        return Some(PathBuf::from(xdg).join("rastray"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(home).join(".cache").join("rastray"));
+    }
+    None
+}
+
+fn cache_path() -> Option<PathBuf> {
+    cache_dir().map(|d| d.join(CACHE_FILE_NAME))
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct OsvCache {
+    #[serde(default)]
+    entries: BTreeMap<String, OsvCacheEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct OsvCacheEntry {
+    fetched_at: u64,
+    vulns: Vec<OsvVuln>,
+}
+
+impl OsvCache {
+    fn load_or_default() -> Self {
+        let Some(path) = cache_path() else {
+            return Self::default();
+        };
+        let Ok(contents) = fs::read_to_string(&path) else {
+            return Self::default();
+        };
+        serde_json::from_str(&contents).unwrap_or_default()
+    }
+
+    fn save(&self) -> std::io::Result<()> {
+        let Some(path) = cache_path() else {
+            return Ok(());
+        };
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let body = serde_json::to_string(self).map_err(std::io::Error::other)?;
+        fs::write(path, body)
     }
 }
 
@@ -927,5 +1045,74 @@ golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
         assert!(pkgs
             .iter()
             .any(|p| p.name == "github.com/pkg/errors" && p.version == "v0.9.1"));
+    }
+
+    #[test]
+    fn cache_key_uniquely_identifies_packages() {
+        let a = Package {
+            ecosystem: "crates.io",
+            name: "tokio".to_string(),
+            version: "1.20.0".to_string(),
+        };
+        let b = Package {
+            ecosystem: "crates.io",
+            name: "tokio".to_string(),
+            version: "1.21.0".to_string(),
+        };
+        let c = Package {
+            ecosystem: "npm",
+            name: "tokio".to_string(),
+            version: "1.20.0".to_string(),
+        };
+        assert_ne!(cache_key(&a), cache_key(&b));
+        assert_ne!(cache_key(&a), cache_key(&c));
+        assert_eq!(cache_key(&a), cache_key(&a.clone()));
+    }
+
+    #[test]
+    fn osv_cache_round_trip_via_temp_dir() {
+        let tmp_dir = std::env::temp_dir().join(format!("rastray-cache-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let prev = std::env::var("RASTRAY_CACHE_DIR").ok();
+        std::env::set_var("RASTRAY_CACHE_DIR", &tmp_dir);
+
+        let mut cache = OsvCache::default();
+        cache.entries.insert(
+            "test::pkg::1.0.0".to_string(),
+            OsvCacheEntry {
+                fetched_at: 1000,
+                vulns: vec![OsvVuln {
+                    id: "GHSA-test".to_string(),
+                    summary: Some("test".to_string()),
+                    ..OsvVuln::default()
+                }],
+            },
+        );
+        assert!(cache.save().is_ok());
+
+        let reloaded = OsvCache::load_or_default();
+        assert_eq!(reloaded.entries.len(), 1);
+        assert!(reloaded.entries.contains_key("test::pkg::1.0.0"));
+
+        match prev {
+            Some(v) => std::env::set_var("RASTRAY_CACHE_DIR", v),
+            None => std::env::remove_var("RASTRAY_CACHE_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn cache_dir_uses_override_env_when_set() {
+        let prev = std::env::var("RASTRAY_CACHE_DIR").ok();
+        std::env::set_var("RASTRAY_CACHE_DIR", "/tmp/rastray-test-override");
+        let dir = cache_dir();
+        assert_eq!(
+            dir,
+            Some(std::path::PathBuf::from("/tmp/rastray-test-override"))
+        );
+        match prev {
+            Some(v) => std::env::set_var("RASTRAY_CACHE_DIR", v),
+            None => std::env::remove_var("RASTRAY_CACHE_DIR"),
+        }
     }
 }
