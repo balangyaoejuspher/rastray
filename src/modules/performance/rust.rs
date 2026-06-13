@@ -1,54 +1,14 @@
-use std::fs;
 use std::path::Path;
 
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Parser, Query, QueryCursor};
 
 use crate::cli::Severity;
-use crate::crawler::{CrawlSummary, FileKind};
-use crate::reporter::{Category, Finding, Location};
+use crate::reporter::Finding;
 
-use super::{Analyzer, AnalyzerError};
+use super::shared::build_finding;
 
-#[derive(Debug, Default)]
-pub struct PerformanceAnalyzer;
-
-impl PerformanceAnalyzer {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Analyzer for PerformanceAnalyzer {
-    fn name(&self) -> &'static str {
-        "performance"
-    }
-
-    fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
-        let mut findings = Vec::new();
-        for file in &crawl.files {
-            if file.kind != FileKind::Source {
-                continue;
-            }
-            let ext = file
-                .path
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_ascii_lowercase());
-            if ext.as_deref() != Some("rs") {
-                continue;
-            }
-            let contents = match fs::read_to_string(&file.path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            findings.extend(analyze_rust_file(&file.path, &contents));
-        }
-        Ok(findings)
-    }
-}
-
-fn analyze_rust_file(path: &Path, source: &str) -> Vec<Finding> {
+pub fn analyze(path: &Path, source: &str) -> Vec<Finding> {
     let mut parser = Parser::new();
     let language = tree_sitter_rust::LANGUAGE.into();
     if parser.set_language(&language).is_err() {
@@ -177,56 +137,18 @@ fn has_loop_ancestor_within_fn(start: Node) -> bool {
     false
 }
 
-fn build_finding(
-    path: &Path,
-    source: &str,
-    node: Node,
-    code: &str,
-    message: &str,
-    severity: Severity,
-    help: &str,
-) -> Finding {
-    let start = node.start_byte();
-    let end = node.end_byte();
-    let length = end.saturating_sub(start);
-    let (line, column) = byte_offset_to_line_col(source, start);
-    let location = Location::file(path.to_path_buf())
-        .with_span(start, length)
-        .with_line(line, column);
-    Finding::new(code, message, severity, Category::Performance)
-        .with_help(help)
-        .with_location(location)
-}
-
-fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
-    let mut line = 1usize;
-    let mut col = 1usize;
-    for (i, ch) in text.char_indices() {
-        if i >= offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn analyze(source: &str) -> Vec<Finding> {
-        analyze_rust_file(&PathBuf::from("test.rs"), source)
+    fn run(source: &str) -> Vec<Finding> {
+        analyze(&PathBuf::from("test.rs"), source)
     }
 
     #[test]
     fn empty_source_produces_no_findings() {
-        assert_eq!(analyze("").len(), 0);
+        assert_eq!(run("").len(), 0);
     }
 
     #[test]
@@ -237,7 +159,7 @@ mod tests {
                 println!("{s}");
             }
         "#;
-        assert_eq!(analyze(src).len(), 0);
+        assert_eq!(run(src).len(), 0);
     }
 
     #[test]
@@ -251,7 +173,7 @@ mod tests {
                 s
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "RSTR-PERF-001");
         assert_eq!(findings[0].severity, Severity::Medium);
@@ -260,7 +182,7 @@ mod tests {
     #[test]
     fn format_inside_while_loop_is_flagged() {
         let src = r#"
-            fn run() {
+            fn run_it() {
                 let mut i = 0;
                 while i < 10 {
                     let _ = format!("{i}");
@@ -268,7 +190,7 @@ mod tests {
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "RSTR-PERF-001");
     }
@@ -276,7 +198,7 @@ mod tests {
     #[test]
     fn format_inside_loop_keyword_is_flagged() {
         let src = r#"
-            fn run() {
+            fn run_it() {
                 let mut i = 0;
                 loop {
                     let _ = format!("{i}");
@@ -285,7 +207,7 @@ mod tests {
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "RSTR-PERF-001");
     }
@@ -293,14 +215,14 @@ mod tests {
     #[test]
     fn format_inside_closure_inside_loop_does_not_cross_fn_boundary() {
         let src = r#"
-            fn run() {
+            fn run_it() {
                 for _ in 0..3 {
                     let make = || format!("inside closure");
                     let _ = make();
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         let format_findings: Vec<_> = findings
             .iter()
             .filter(|f| f.code == "RSTR-PERF-001")
@@ -317,7 +239,7 @@ mod tests {
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         let clone_findings: Vec<_> = findings
             .iter()
             .filter(|f| f.code == "RSTR-PERF-002")
@@ -335,7 +257,7 @@ mod tests {
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         assert_eq!(
             findings
                 .iter()
@@ -354,7 +276,7 @@ mod tests {
                 }
             }
         "#;
-        let findings = analyze(src);
+        let findings = run(src);
         assert_eq!(
             findings
                 .iter()
@@ -367,14 +289,6 @@ mod tests {
     #[test]
     fn invalid_syntax_does_not_panic() {
         let src = "fn broken( { let x = ";
-        let _ = analyze(src);
-    }
-
-    #[test]
-    fn byte_offset_to_line_col_handles_multiline_offsets() {
-        let text = "a\nbb\nccc";
-        assert_eq!(byte_offset_to_line_col(text, 0), (1, 1));
-        assert_eq!(byte_offset_to_line_col(text, 2), (2, 1));
-        assert_eq!(byte_offset_to_line_col(text, 5), (3, 1));
+        let _ = run(src);
     }
 }
