@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use serde::Serialize;
+use serde_json::json;
 use thiserror::Error;
 
 use crate::cli::{OutputFormat, Severity};
@@ -154,11 +155,16 @@ impl Report {
         self.findings.retain(|f| f.severity >= min);
     }
 
-    pub fn render(&self, format: OutputFormat) -> Result<(), ReporterError> {
+    pub fn render(
+        &self,
+        format: OutputFormat,
+        output_path: Option<&Path>,
+    ) -> Result<(), ReporterError> {
         match format {
-            OutputFormat::Json => render_json(self),
+            OutputFormat::Json => render_json(self, output_path),
             OutputFormat::Human => render_human(self),
             OutputFormat::GhActions => render_gh_actions(self),
+            OutputFormat::Sarif => render_sarif(self, output_path),
         }
     }
 }
@@ -179,10 +185,19 @@ pub enum ReporterError {
     Io(#[from] std::io::Error),
 }
 
-fn render_json(report: &Report) -> Result<(), ReporterError> {
+fn render_json(report: &Report, output_path: Option<&Path>) -> Result<(), ReporterError> {
     let payload = serde_json::to_string_pretty(report)?;
-    println!("{payload}");
-    Ok(())
+    write_or_print(&payload, output_path)
+}
+
+fn write_or_print(payload: &str, output_path: Option<&Path>) -> Result<(), ReporterError> {
+    match output_path {
+        Some(path) => std::fs::write(path, payload).map_err(ReporterError::Io),
+        None => {
+            println!("{payload}");
+            Ok(())
+        }
+    }
 }
 
 fn render_gh_actions(report: &Report) -> Result<(), ReporterError> {
@@ -190,6 +205,97 @@ fn render_gh_actions(report: &Report) -> Result<(), ReporterError> {
         println!("{}", gh_actions_line(finding));
     }
     Ok(())
+}
+
+fn render_sarif(report: &Report, output_path: Option<&Path>) -> Result<(), ReporterError> {
+    let payload = serde_json::to_string_pretty(&sarif_document(report))?;
+    write_or_print(&payload, output_path)
+}
+
+fn sarif_document(report: &Report) -> serde_json::Value {
+    use std::collections::BTreeMap;
+
+    let mut rules_by_id: BTreeMap<String, &Finding> = BTreeMap::new();
+    for f in &report.findings {
+        rules_by_id.entry(f.code.clone()).or_insert(f);
+    }
+
+    let rules: Vec<serde_json::Value> = rules_by_id.values().map(|f| sarif_rule(f)).collect();
+
+    let results: Vec<serde_json::Value> = report.findings.iter().map(sarif_result).collect();
+
+    json!({
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "rastray",
+                        "version": env!("CARGO_PKG_VERSION"),
+                        "informationUri": "https://github.com/balangyaoejuspher/rastray",
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+            }
+        ]
+    })
+}
+
+fn sarif_rule(f: &Finding) -> serde_json::Value {
+    let mut rule = json!({
+        "id": f.code,
+        "name": f.code,
+        "shortDescription": { "text": f.message },
+        "defaultConfiguration": { "level": sarif_level(f.severity) },
+        "properties": { "category": f.category.as_str() },
+    });
+    if let Some(help) = &f.help {
+        rule["help"] = json!({ "text": help });
+    }
+    rule
+}
+
+fn sarif_result(f: &Finding) -> serde_json::Value {
+    let mut result = json!({
+        "ruleId": f.code,
+        "level": sarif_level(f.severity),
+        "message": { "text": f.message },
+    });
+
+    if let Some(loc) = &f.location {
+        let mut physical = json!({
+            "artifactLocation": { "uri": loc.file.display().to_string() }
+        });
+        let mut region = serde_json::Map::new();
+        if let Some(line) = loc.line {
+            region.insert("startLine".to_string(), json!(line));
+        }
+        if let Some(col) = loc.column {
+            region.insert("startColumn".to_string(), json!(col));
+        }
+        if let Some(offset) = loc.byte_offset {
+            region.insert("charOffset".to_string(), json!(offset));
+            if let Some(len) = loc.byte_length {
+                region.insert("charLength".to_string(), json!(len));
+            }
+        }
+        if !region.is_empty() {
+            physical["region"] = serde_json::Value::Object(region);
+        }
+        result["locations"] = json!([{ "physicalLocation": physical }]);
+    }
+
+    result
+}
+
+fn sarif_level(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Critical | Severity::High => "error",
+        Severity::Medium => "warning",
+        Severity::Low | Severity::Info => "note",
+    }
 }
 
 fn gh_actions_line(finding: &Finding) -> String {
@@ -598,6 +704,91 @@ mod tests {
         let f = finding_with_location(Severity::High, "first\nsecond", "src/a.rs", 1, 1);
         let line = gh_actions_line(&f);
         assert!(line.ends_with("::first%0Asecond"));
+    }
+
+    #[test]
+    fn sarif_level_maps_severities() {
+        assert_eq!(sarif_level(Severity::Critical), "error");
+        assert_eq!(sarif_level(Severity::High), "error");
+        assert_eq!(sarif_level(Severity::Medium), "warning");
+        assert_eq!(sarif_level(Severity::Low), "note");
+        assert_eq!(sarif_level(Severity::Info), "note");
+    }
+
+    #[test]
+    fn sarif_document_has_required_top_level_fields() {
+        let report = Report::new();
+        let doc = sarif_document(&report);
+        assert_eq!(doc["version"], "2.1.0");
+        assert!(doc["$schema"].as_str().unwrap_or("").contains("sarif"));
+        assert!(doc["runs"].is_array());
+        assert_eq!(doc["runs"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    #[test]
+    fn sarif_document_lists_tool_driver_metadata() {
+        let report = Report::new();
+        let doc = sarif_document(&report);
+        let driver = &doc["runs"][0]["tool"]["driver"];
+        assert_eq!(driver["name"], "rastray");
+        assert!(driver["version"].is_string());
+        assert_eq!(
+            driver["informationUri"],
+            "https://github.com/balangyaoejuspher/rastray"
+        );
+    }
+
+    #[test]
+    fn sarif_document_deduplicates_rules_by_code() {
+        let mut report = Report::new();
+        report.push(finding_with_location(Severity::High, "first", "a.rs", 1, 1));
+        report.push(finding_with_location(
+            Severity::High,
+            "second",
+            "a.rs",
+            2,
+            1,
+        ));
+        let doc = sarif_document(&report);
+        let rules = doc["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(rules.len(), 1);
+        let results = doc["runs"][0]["results"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn sarif_result_contains_location_when_finding_has_one() {
+        let mut report = Report::new();
+        report.push(finding_with_location(
+            Severity::Medium,
+            "msg",
+            "src/a.rs",
+            7,
+            3,
+        ));
+        let doc = sarif_document(&report);
+        let r = &doc["runs"][0]["results"][0];
+        assert_eq!(r["ruleId"], "RSTR-TST-100");
+        assert_eq!(r["level"], "warning");
+        let physical = &r["locations"][0]["physicalLocation"];
+        assert_eq!(physical["artifactLocation"]["uri"], "src/a.rs");
+        assert_eq!(physical["region"]["startLine"], 7);
+        assert_eq!(physical["region"]["startColumn"], 3);
+    }
+
+    #[test]
+    fn sarif_result_omits_locations_when_finding_has_none() {
+        let mut report = Report::new();
+        report.push(finding(Severity::Low, Category::Crawler));
+        let doc = sarif_document(&report);
+        let r = &doc["runs"][0]["results"][0];
+        assert!(r["locations"].is_null());
     }
 }
 
