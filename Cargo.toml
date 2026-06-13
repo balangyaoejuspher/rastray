@@ -11,6 +11,13 @@ documentation = "https://github.com/balangyaoejuspher/rastray"
 readme = "README.md"
 keywords = ["static-analysis", "security", "audit", "cli", "linter"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = [
+    ".githooks/**",
+    ".github/**",
+    ".editorconfig",
+    "COMMIT_CONVENTION.md",
+    "rust-toolchain.toml",
+]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive", "cargo"] }
