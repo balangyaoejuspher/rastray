@@ -1,0 +1,7 @@
+[scan]
+fail_on = "high"
+
+[scan.ignore]
+paths = []
+
+[rules]

@@ -1,0 +1,12 @@
+[scan]
+fail_on = "never"
+
+[scan.ignore]
+paths = [
+    "target/**",
+    "dist/**",
+    "build/**",
+    "node_modules/**",
+]
+
+[rules]
