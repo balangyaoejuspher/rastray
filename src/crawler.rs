@@ -252,3 +252,112 @@ const NOISE_DIRECTORIES: &[&str] = &[
     "**/venv/**",
     "**/__pycache__/**",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn classify_recognises_cargo_manifest() {
+        assert_eq!(classify_path(Path::new("Cargo.toml")), FileKind::Manifest);
+        assert_eq!(classify_path(Path::new("CARGO.TOML")), FileKind::Manifest);
+        assert_eq!(
+            classify_path(Path::new("project/Cargo.lock")),
+            FileKind::Manifest
+        );
+    }
+
+    #[test]
+    fn classify_recognises_polyglot_manifests() {
+        assert_eq!(classify_path(Path::new("package.json")), FileKind::Manifest);
+        assert_eq!(classify_path(Path::new("go.mod")), FileKind::Manifest);
+        assert_eq!(
+            classify_path(Path::new("requirements.txt")),
+            FileKind::Manifest
+        );
+        assert_eq!(classify_path(Path::new("pom.xml")), FileKind::Manifest);
+    }
+
+    #[test]
+    fn classify_recognises_source_extensions() {
+        assert_eq!(classify_path(Path::new("src/main.rs")), FileKind::Source);
+        assert_eq!(classify_path(Path::new("app/index.ts")), FileKind::Source);
+        assert_eq!(classify_path(Path::new("a/b/c.py")), FileKind::Source);
+    }
+
+    #[test]
+    fn classify_recognises_config_extensions() {
+        assert_eq!(classify_path(Path::new("config.yaml")), FileKind::Config);
+        assert_eq!(classify_path(Path::new("settings.json")), FileKind::Config);
+    }
+
+    #[test]
+    fn classify_recognises_dotfile_env_variants_as_config() {
+        assert_eq!(classify_path(Path::new(".env")), FileKind::Config);
+        assert_eq!(classify_path(Path::new(".envrc")), FileKind::Config);
+        assert_eq!(classify_path(Path::new(".env.local")), FileKind::Config);
+        assert_eq!(
+            classify_path(Path::new(".env.production")),
+            FileKind::Config
+        );
+        assert_eq!(
+            classify_path(Path::new("services/api/.env")),
+            FileKind::Config
+        );
+    }
+
+    #[test]
+    fn classify_unknown_falls_through_to_other() {
+        assert_eq!(classify_path(Path::new("README")), FileKind::Other);
+        assert_eq!(classify_path(Path::new("image.png")), FileKind::Other);
+        assert_eq!(classify_path(Path::new("archive.tar.gz")), FileKind::Other);
+    }
+
+    #[test]
+    fn is_dotfile_config_boundary_cases() {
+        assert!(is_dotfile_config(".env"));
+        assert!(is_dotfile_config(".envrc"));
+        assert!(is_dotfile_config(".env.staging"));
+        assert!(!is_dotfile_config(".envoy"));
+        assert!(!is_dotfile_config("env"));
+        assert!(!is_dotfile_config(".env_local"));
+    }
+
+    #[test]
+    fn file_kind_as_str_round_trip() {
+        assert_eq!(FileKind::Manifest.as_str(), "manifest");
+        assert_eq!(FileKind::Source.as_str(), "source");
+        assert_eq!(FileKind::Config.as_str(), "config");
+        assert_eq!(FileKind::Other.as_str(), "other");
+    }
+
+    #[test]
+    fn crawl_summary_count_of_filters_kinds() {
+        let summary = CrawlSummary {
+            files: vec![
+                DiscoveredFile {
+                    path: PathBuf::from("a.rs"),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+                DiscoveredFile {
+                    path: PathBuf::from("b.rs"),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+                DiscoveredFile {
+                    path: PathBuf::from("Cargo.toml"),
+                    kind: FileKind::Manifest,
+                    size: None,
+                },
+            ],
+            skipped: 0,
+            errors: Vec::new(),
+        };
+        assert_eq!(summary.total(), 3);
+        assert_eq!(summary.count_of(FileKind::Source), 2);
+        assert_eq!(summary.count_of(FileKind::Manifest), 1);
+        assert_eq!(summary.count_of(FileKind::Config), 0);
+    }
+}

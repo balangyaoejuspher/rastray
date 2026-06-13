@@ -366,6 +366,96 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn finding(severity: Severity, category: Category) -> Finding {
+        Finding::new("RSTR-TST-000", "test", severity, category)
+    }
+
+    #[test]
+    fn format_bytes_handles_all_buckets() {
+        assert_eq!(format_bytes(0), "0 B scanned");
+        assert_eq!(format_bytes(512), "512 B scanned");
+        assert_eq!(format_bytes(1023), "1023 B scanned");
+        assert_eq!(format_bytes(1024), "1.0 KB scanned");
+        assert_eq!(format_bytes(2048), "2.0 KB scanned");
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB scanned");
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0 GB scanned");
+    }
+
+    #[test]
+    fn format_rate_handles_zero_ms_without_panic() {
+        assert_eq!(format_rate(100, 0, "files"), "100 files");
+    }
+
+    #[test]
+    fn format_rate_scales_units() {
+        assert_eq!(format_rate(50, 1000, "files"), "50 files/s");
+        assert_eq!(format_rate(5_000, 1000, "files"), "5.0k files/s");
+        assert_eq!(format_rate(5_000_000, 1000, "files"), "5.0M files/s");
+    }
+
+    #[test]
+    fn render_bar_returns_only_empty_blocks_when_max_zero() {
+        let bar = render_bar(0, 0, 10);
+        assert_eq!(bar.chars().count(), 10);
+        assert!(bar.chars().all(|c| c == '░'));
+    }
+
+    #[test]
+    fn render_bar_full_when_count_equals_max() {
+        let bar = render_bar(7, 7, 10);
+        assert_eq!(bar.chars().count(), 10);
+        assert!(bar.chars().all(|c| c == '▓'));
+    }
+
+    #[test]
+    fn render_bar_proportional_partial() {
+        let bar = render_bar(3, 10, 10);
+        assert_eq!(bar.chars().count(), 10);
+        let filled = bar.chars().filter(|c| *c == '▓').count();
+        assert_eq!(filled, 3);
+    }
+
+    #[test]
+    fn severity_counts_buckets_findings_correctly() {
+        let mut report = Report::new();
+        report.push(finding(Severity::Critical, Category::Secret));
+        report.push(finding(Severity::Critical, Category::Secret));
+        report.push(finding(Severity::High, Category::Secret));
+        report.push(finding(Severity::Low, Category::Crawler));
+        let counts = severity_counts(&report);
+        assert_eq!(counts, [2, 1, 0, 1, 0]);
+    }
+
+    #[test]
+    fn severity_counts_empty_report_is_all_zero() {
+        let report = Report::new();
+        assert_eq!(severity_counts(&report), [0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn apply_min_severity_drops_below_threshold() {
+        let mut report = Report::new();
+        report.push(finding(Severity::Info, Category::Secret));
+        report.push(finding(Severity::Low, Category::Secret));
+        report.push(finding(Severity::High, Category::Secret));
+        report.apply_min_severity(Severity::Medium);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn has_at_or_above_recognises_threshold() {
+        let mut report = Report::new();
+        report.push(finding(Severity::Low, Category::Secret));
+        assert!(report.has_at_or_above(Severity::Low));
+        assert!(!report.has_at_or_above(Severity::Medium));
+    }
+}
+
 fn render_finding(finding: &Finding) -> Result<(), ReporterError> {
     let diag = FindingDiagnostic::from_finding(finding)?;
     let report: miette::Report = miette::Report::new(diag);
