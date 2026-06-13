@@ -245,6 +245,9 @@ Scanning (`--format sarif --output rastray.sarif`).
 See [`examples/github-actions/README.md`](examples/github-actions/README.md)
 for setup instructions.
 
+Drop-in `.rastray.toml` snippets for common adoption patterns (advisory,
+strict, monorepo) are in [`examples/config/`](examples/config/).
+
 ---
 
 ## Security

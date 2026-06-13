@@ -1,0 +1,13 @@
+[scan]
+fail_on = "medium"
+
+[scan.ignore]
+paths = [
+    "target/**",
+    "dist/**",
+    "build/**",
+    "node_modules/**",
+    "**/*.min.js",
+]
+
+[rules]

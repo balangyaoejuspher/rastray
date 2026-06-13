@@ -21,20 +21,23 @@ cache the resulting binary for subsequent runs.
 
 ## What it does
 
-The workflow runs two passes:
+The workflow runs three passes:
 
-1. **Inline annotations** — `rastray . --format gh-actions` emits GitHub
-   workflow commands so findings appear as `error` / `warning` / `notice`
-   annotations on the affected lines of a pull request.
-2. **SARIF upload** — `rastray . --format sarif --output rastray.sarif`
-   produces a SARIF 2.1.0 document that is uploaded via
+1. **Inline annotations** — `rastray . --format gh-actions --fail-on never`
+   emits GitHub workflow commands so findings appear as `error` /
+   `warning` / `notice` annotations on the affected lines of a pull
+   request. `--fail-on never` keeps this step non-blocking so reviewers
+   always see the annotations.
+2. **SARIF upload** — `rastray . --format sarif --output rastray.sarif
+   --fail-on never` produces a SARIF 2.1.0 document that is uploaded via
    [`github/codeql-action/upload-sarif`](https://github.com/github/codeql-action)
-   so findings appear under the **Security → Code scanning** tab and gate
-   merges via branch protection rules.
-
-Both passes use `continue-on-error: true` so a finding does not fail the
-build. Remove that flag once you are ready to block merges on rastray
-results.
+   so findings appear under the **Security → Code scanning** tab. Also
+   non-blocking by design.
+3. **Severity gate** — `rastray . --format human --fail-on high` is the
+   only blocking step. It exits `1` if any `high` or `critical` finding
+   exists and gates the merge via branch protection. Adjust the level
+   to taste (`medium`, `low`, etc.) or drop the step entirely for an
+   advisory-only setup.
 
 ## Required permissions
 
@@ -52,8 +55,10 @@ requires GitHub Advanced Security.
 
 | Want to…                              | Change                                                          |
 | ------------------------------------- | --------------------------------------------------------------- |
-| Fail the build on findings            | Remove `continue-on-error: true` on the relevant step.          |
-| Only report high-severity findings    | Pass `--min-severity high`.                                     |
+| Block on **any** finding              | Change the gate to `--fail-on low` (or `info`).                 |
+| Make the workflow purely advisory     | Remove the **Enforce severity gate** step.                      |
+| Only report high-severity findings    | Pass `--min-severity high` on the annotation/SARIF passes.      |
 | Skip the network (OSV vuln lookups)   | Pass `--offline`.                                               |
 | Scan a subdirectory                   | Replace `.` with the path you want.                             |
+| Commit per-repo policy                | Drop a `.rastray.toml` at the repo root (see [`../config/`](../config/)). |
 | Pin to a specific rastray version     | Replace `cargo install --git …` with `cargo install rastray --version X.Y.Z` once published to crates.io. |

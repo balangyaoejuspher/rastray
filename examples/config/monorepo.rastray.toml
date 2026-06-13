@@ -1,0 +1,27 @@
+[scan]
+fail_on = "high"
+
+[scan.ignore]
+paths = [
+    "**/target/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.next/**",
+    "**/out/**",
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/__pycache__/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/.tox/**",
+    "**/.mypy_cache/**",
+    "**/.pytest_cache/**",
+    "**/.cargo/**",
+    "**/.gradle/**",
+    "**/coverage/**",
+    "**/*.min.js",
+    "**/*.min.css",
+    "**/*.lock.json",
+]
+
+[rules]
