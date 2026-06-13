@@ -6,6 +6,7 @@ use crate::reporter::Finding;
 
 use super::{Analyzer, AnalyzerError};
 
+mod go;
 mod python;
 mod rust;
 mod shared;
@@ -54,6 +55,7 @@ fn analyze_file(ext: &str, path: &Path, source: &str) -> Vec<Finding> {
         "rs" => rust::analyze(path, source),
         "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => typescript::analyze(path, source),
         "py" => python::analyze(path, source),
+        "go" => go::analyze(path, source),
         _ => Vec::new(),
     }
 }
