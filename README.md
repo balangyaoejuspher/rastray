@@ -90,7 +90,7 @@ rastray -vv
 | `PATH`                   | `.`       | Directory or file to scan.                                                                  |
 | `--min-severity <LEVEL>` | `low`     | Suppress findings below this severity. One of: `info`, `low`, `medium`, `high`, `critical`. |
 | `--json`                 | off       | Shortcut for `--format json`.                                                               |
-| `--format <FMT>`         | inferred  | `human` or `json`. Overrides `--json` when both are set.                                    |
+| `--format <FMT>`         | inferred  | `human`, `json`, or `gh-actions`. Overrides `--json` when both are set.                     |
 | `--no-ignore`            | off       | Ignore `.gitignore`, `.ignore`, and global ignore files.                                    |
 | `--hidden`               | off       | Descend into hidden files and directories.                                                  |
 | `--follow-links`         | off       | Follow symlinks during the walk.                                                            |
