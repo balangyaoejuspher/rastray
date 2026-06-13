@@ -72,6 +72,12 @@ pub struct Cli {
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
 
+    #[arg(long = "offline", default_value_t = false)]
+    pub offline: bool,
+
+    #[arg(long = "no-cache", default_value_t = false)]
+    pub no_cache: bool,
+
     #[arg(long = "no-ignore", default_value_t = false)]
     pub no_ignore: bool,
 
