@@ -1,0 +1,63 @@
+name: rastray
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and rastray binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/rastray
+          key: rastray-${{ runner.os }}-v0.1.0
+
+      - name: Install rastray
+        run: |
+          if ! command -v rastray >/dev/null 2>&1; then
+            cargo install --git https://github.com/balangyaoejuspher/rastray --locked
+          fi
+
+      - name: Run rastray (inline PR annotations)
+        run: rastray . --format gh-actions --min-severity low
+        continue-on-error: true
+
+      - name: Run rastray (SARIF for Code Scanning)
+        run: rastray . --format sarif --output rastray.sarif --min-severity low
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rastray.sarif
+          category: rastray
+
+      - name: Upload SARIF as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rastray-sarif
+          path: rastray.sarif
+          if-no-files-found: warn

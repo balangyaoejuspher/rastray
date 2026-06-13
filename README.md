@@ -207,6 +207,19 @@ The schema is considered **stable within a minor version** once Phase 2 ships.
 
 ---
 
+## Continuous integration
+
+A ready-to-copy GitHub Actions workflow is available under
+[`examples/github-actions/`](examples/github-actions/). It runs `rastray`
+on every push and pull request, posts findings as inline annotations
+(`--format gh-actions`), and uploads a SARIF report to GitHub Code
+Scanning (`--format sarif --output rastray.sarif`).
+
+See [`examples/github-actions/README.md`](examples/github-actions/README.md)
+for setup instructions.
+
+---
+
 ## Security
 
 `rastray` is itself a security-focused tool, so it holds itself to its own standards:
