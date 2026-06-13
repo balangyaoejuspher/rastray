@@ -31,14 +31,18 @@ impl Analyzer for DependenciesAnalyzer {
     }
 
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
-        let lockfiles = collect_cargo_lockfiles(crawl);
-        if lockfiles.is_empty() {
-            return Ok(Vec::new());
+        let mut packages: Vec<(PathBuf, Package)> = Vec::new();
+
+        for lockfile in collect_cargo_lockfiles(crawl) {
+            if let Ok(pkgs) = read_cargo_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
         }
 
-        let mut packages: Vec<(PathBuf, RustPackage)> = Vec::new();
-        for lockfile in &lockfiles {
-            if let Ok(pkgs) = read_cargo_lock(lockfile) {
+        for lockfile in collect_npm_lockfiles(crawl) {
+            if let Ok(pkgs) = read_npm_lock(&lockfile) {
                 for pkg in pkgs {
                     packages.push((lockfile.clone(), pkg));
                 }
@@ -80,6 +84,14 @@ impl Analyzer for DependenciesAnalyzer {
 }
 
 fn collect_cargo_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "cargo.lock")
+}
+
+fn collect_npm_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "package-lock.json")
+}
+
+fn collect_manifests_named(crawl: &CrawlSummary, target_name: &str) -> Vec<PathBuf> {
     crawl
         .files
         .iter()
@@ -90,13 +102,20 @@ fn collect_cargo_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_ascii_lowercase());
-            if name.as_deref() == Some("cargo.lock") {
+            if name.as_deref() == Some(target_name) {
                 Some(f.path.clone())
             } else {
                 None
             }
         })
         .collect()
+}
+
+#[derive(Debug, Clone)]
+struct Package {
+    ecosystem: &'static str,
+    name: String,
+    version: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -113,7 +132,7 @@ struct CargoLock {
     package: Vec<RustPackage>,
 }
 
-fn read_cargo_lock(path: &Path) -> Result<Vec<RustPackage>, ParseError> {
+fn read_cargo_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
     let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
     let lock: CargoLock = toml::from_str(&contents).map_err(|e| ParseError::Toml(e.to_string()))?;
     Ok(lock
@@ -124,13 +143,90 @@ fn read_cargo_lock(path: &Path) -> Result<Vec<RustPackage>, ParseError> {
                 .as_deref()
                 .is_some_and(|s| s.starts_with("registry+"))
         })
+        .map(|p| Package {
+            ecosystem: "crates.io",
+            name: p.name,
+            version: p.version,
+        })
         .collect())
+}
+
+#[derive(Debug, Deserialize)]
+struct NpmLock {
+    #[serde(default)]
+    packages: std::collections::BTreeMap<String, NpmLockPackage>,
+    #[serde(default)]
+    dependencies: std::collections::BTreeMap<String, NpmLockLegacyDep>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NpmLockPackage {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default, rename = "link")]
+    link: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct NpmLockLegacyDep {
+    #[serde(default)]
+    version: Option<String>,
+}
+
+fn read_npm_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let lock: NpmLock =
+        serde_json::from_str(&contents).map_err(|e| ParseError::Json(e.to_string()))?;
+
+    let mut packages = Vec::new();
+
+    for (key, entry) in lock.packages {
+        if key.is_empty() || entry.link {
+            continue;
+        }
+        let Some(version) = entry.version else {
+            continue;
+        };
+        let Some(name) = entry.name.or_else(|| derive_npm_name(&key)) else {
+            continue;
+        };
+        packages.push(Package {
+            ecosystem: "npm",
+            name,
+            version,
+        });
+    }
+
+    if packages.is_empty() {
+        for (name, dep) in lock.dependencies {
+            if let Some(version) = dep.version {
+                packages.push(Package {
+                    ecosystem: "npm",
+                    name,
+                    version,
+                });
+            }
+        }
+    }
+
+    Ok(packages)
+}
+
+fn derive_npm_name(key: &str) -> Option<String> {
+    let last = key.rsplit("node_modules/").next()?;
+    if last.is_empty() {
+        return None;
+    }
+    Some(last.to_string())
 }
 
 #[derive(Debug)]
 enum ParseError {
     Io(std::io::Error),
     Toml(String),
+    Json(String),
 }
 
 impl std::fmt::Display for ParseError {
@@ -138,6 +234,7 @@ impl std::fmt::Display for ParseError {
         match self {
             ParseError::Io(e) => write!(f, "io error: {e}"),
             ParseError::Toml(e) => write!(f, "toml parse error: {e}"),
+            ParseError::Json(e) => write!(f, "json parse error: {e}"),
         }
     }
 }
@@ -205,13 +302,13 @@ struct OsvDatabaseSpecific {
 }
 
 async fn query_osv_batch(
-    packages: &[(PathBuf, RustPackage)],
+    packages: &[(PathBuf, Package)],
 ) -> Result<Vec<Vec<OsvVuln>>, reqwest::Error> {
     let queries: Vec<OsvQuery> = packages
         .iter()
         .map(|(_, p)| OsvQuery {
             package: OsvPackage {
-                ecosystem: "crates.io",
+                ecosystem: p.ecosystem,
                 name: &p.name,
             },
             version: &p.version,
@@ -263,7 +360,7 @@ async fn fetch_vuln(client: &reqwest::Client, id: &str) -> Result<OsvVuln, reqwe
         .await
 }
 
-fn build_finding(lockfile: &Path, pkg: &RustPackage, vuln: &OsvVuln) -> Finding {
+fn build_finding(lockfile: &Path, pkg: &Package, vuln: &OsvVuln) -> Finding {
     let summary = vuln
         .summary
         .clone()
@@ -362,6 +459,7 @@ mod tests {
             Err(_) => return,
         };
         assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].ecosystem, "crates.io");
         assert_eq!(pkgs[0].name, "registry-pkg");
         assert_eq!(pkgs[0].version, "1.2.3");
     }
@@ -495,10 +593,10 @@ mod tests {
 
     #[test]
     fn build_finding_uses_dependency_category_and_id_in_code() {
-        let pkg = RustPackage {
+        let pkg = Package {
+            ecosystem: "crates.io",
             name: "demo".to_string(),
             version: "0.1.0".to_string(),
-            source: Some("registry+https://github.com/rust-lang/crates.io-index".to_string()),
         };
         let vuln = OsvVuln {
             id: "RUSTSEC-2024-0001".to_string(),
@@ -510,5 +608,88 @@ mod tests {
         assert!(finding.code.contains("RUSTSEC-2024-0001"));
         assert!(finding.message.contains("demo"));
         assert!(finding.message.contains("0.1.0"));
+    }
+
+    #[test]
+    fn read_npm_lock_v3_parses_packages_field() {
+        let body = r#"{
+            "name": "root",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "packages": {
+                "": { "name": "root", "version": "1.0.0" },
+                "node_modules/lodash": { "version": "4.17.20" },
+                "node_modules/scoped-pkg": { "name": "@scope/scoped-pkg", "version": "2.0.0" },
+                "node_modules/symlinked": { "version": "1.0.0", "link": true }
+            }
+        }"#;
+        let tmp = std::env::temp_dir().join(format!("rastray-npm-v3-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_npm_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs.iter().all(|p| p.ecosystem == "npm"));
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "lodash" && p.version == "4.17.20"));
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "@scope/scoped-pkg" && p.version == "2.0.0"));
+    }
+
+    #[test]
+    fn read_npm_lock_v1_falls_back_to_dependencies_field() {
+        let body = r#"{
+            "name": "root",
+            "version": "1.0.0",
+            "lockfileVersion": 1,
+            "dependencies": {
+                "minimist": { "version": "0.0.8" },
+                "qs": { "version": "6.5.1" }
+            }
+        }"#;
+        let tmp = std::env::temp_dir().join(format!("rastray-npm-v1-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_npm_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs.iter().all(|p| p.ecosystem == "npm"));
+    }
+
+    #[test]
+    fn read_npm_lock_returns_empty_for_missing_packages_and_dependencies() {
+        let body = r#"{ "name": "root", "version": "1.0.0", "lockfileVersion": 3 }"#;
+        let tmp = std::env::temp_dir().join(format!("rastray-npm-empty-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_npm_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        if let Ok(pkgs) = parsed {
+            assert_eq!(pkgs.len(), 0);
+        }
+    }
+
+    #[test]
+    fn derive_npm_name_handles_root_and_scoped_paths() {
+        assert_eq!(
+            derive_npm_name("node_modules/lodash"),
+            Some("lodash".to_string())
+        );
+        assert_eq!(
+            derive_npm_name("node_modules/@scope/pkg"),
+            Some("@scope/pkg".to_string())
+        );
+        assert_eq!(
+            derive_npm_name("node_modules/foo/node_modules/bar"),
+            Some("bar".to_string())
+        );
+        assert_eq!(derive_npm_name(""), None);
     }
 }
