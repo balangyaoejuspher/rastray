@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-13
+
 ### Added
 
 - **Phase 6 — Configuration & suppression**
@@ -51,4 +53,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed transitive OpenSSL dependency tree.
 - Resolved RustSec advisory `RUSTSEC-2025-0023` (tokio broadcast soundness) by pinning `tokio >= 1.47`.
 
-[Unreleased]: https://github.com/balangyaoejuspher/rastray/commits/main
+[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.0
