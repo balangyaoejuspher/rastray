@@ -91,7 +91,7 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     report.perf.analyze_ms = analyze_ms;
     report.perf.total_ms = total_start.elapsed().as_millis() as u64;
 
-    report.render(format)?;
+    report.render(format, cli.output.as_deref())?;
 
     let exit_code = if report.has_at_or_above(min_severity) {
         exit::FINDINGS
