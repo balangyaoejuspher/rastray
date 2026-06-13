@@ -69,6 +69,9 @@ pub struct Cli {
     #[arg(long = "format", value_enum)]
     pub format: Option<OutputFormat>,
 
+    #[arg(long = "summary-only", default_value_t = false)]
+    pub summary_only: bool,
+
     #[arg(long = "no-ignore", default_value_t = false)]
     pub no_ignore: bool,
 
