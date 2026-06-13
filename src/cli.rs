@@ -46,6 +46,7 @@ pub enum OutputFormat {
     Human,
     Json,
     GhActions,
+    Sarif,
 }
 
 #[derive(Debug, Parser)]
@@ -69,6 +70,9 @@ pub struct Cli {
 
     #[arg(long = "format", value_enum)]
     pub format: Option<OutputFormat>,
+
+    #[arg(long = "output", short = 'o', value_name = "FILE")]
+    pub output: Option<PathBuf>,
 
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
