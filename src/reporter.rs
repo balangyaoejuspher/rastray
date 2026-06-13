@@ -109,6 +109,7 @@ impl Finding {
 pub struct Report {
     pub findings: Vec<Finding>,
     pub stats: ReportStats,
+    pub perf: ReportPerf,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -120,6 +121,14 @@ pub struct ReportStats {
     pub other_files: usize,
     pub crawl_errors: usize,
     pub skipped: usize,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct ReportPerf {
+    pub walk_ms: u64,
+    pub analyze_ms: u64,
+    pub total_ms: u64,
+    pub bytes_scanned: u64,
 }
 
 impl Report {
@@ -174,32 +183,185 @@ fn render_json(report: &Report) -> Result<(), ReporterError> {
 }
 
 fn render_human(report: &Report) -> Result<(), ReporterError> {
-    println!("rastray :: scan complete");
-    println!(
-        "  files: {} (manifests: {}, source: {}, config: {}, other: {})",
-        report.stats.files_scanned,
-        report.stats.manifests,
-        report.stats.source_files,
-        report.stats.config_files,
-        report.stats.other_files,
-    );
-    println!(
-        "  skipped: {}, crawl errors: {}, findings: {}",
-        report.stats.skipped,
-        report.stats.crawl_errors,
-        report.findings.len(),
-    );
+    print_summary_block(report);
 
     if report.findings.is_empty() {
-        println!("  no findings at or above the configured minimum severity.");
         return Ok(());
     }
 
+    println!();
     for finding in &report.findings {
         render_finding(finding)?;
     }
 
     Ok(())
+}
+
+const SUMMARY_RULE: &str = "═══════════════════════════════════════════════════════════════";
+const BAR_WIDTH: usize = 10;
+
+fn print_summary_block(report: &Report) {
+    let total_secs = report.perf.total_ms as f64 / 1000.0;
+    println!("{SUMMARY_RULE}");
+    println!(
+        "  RASTRAY SCAN REPORT — {} files in {:.2}s",
+        report.stats.files_scanned, total_secs
+    );
+    println!("{SUMMARY_RULE}");
+    println!();
+
+    print_severity_distribution(report);
+    println!();
+    print_category_distribution(report);
+    println!();
+    print_coverage(report);
+    println!();
+    print_performance(report);
+    println!("{SUMMARY_RULE}");
+}
+
+fn print_severity_distribution(report: &Report) {
+    let counts = severity_counts(report);
+    let labels = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+    let max = *counts.iter().max().unwrap_or(&0);
+
+    println!("  Severity distribution");
+    println!("  ════════════════════════");
+    for (label, count) in labels.iter().zip(counts.iter()) {
+        println!(
+            "  {label:<10}{bar}    {count}",
+            bar = render_bar(*count, max, BAR_WIDTH)
+        );
+    }
+}
+
+fn severity_counts(report: &Report) -> [usize; 5] {
+    let mut counts = [0usize; 5];
+    for f in &report.findings {
+        let idx = match f.severity {
+            Severity::Critical => 0,
+            Severity::High => 1,
+            Severity::Medium => 2,
+            Severity::Low => 3,
+            Severity::Info => 4,
+        };
+        counts[idx] = counts[idx].saturating_add(1);
+    }
+    counts
+}
+
+fn print_category_distribution(report: &Report) {
+    let mut counts = [0usize; 5];
+    for f in &report.findings {
+        let idx = match f.category {
+            Category::Secret => 0,
+            Category::Dependency => 1,
+            Category::Performance => 2,
+            Category::Crawler => 3,
+            Category::Internal => 4,
+        };
+        counts[idx] = counts[idx].saturating_add(1);
+    }
+    let labels = [
+        "Secrets",
+        "Dependencies",
+        "Performance",
+        "Crawler",
+        "Internal",
+    ];
+
+    println!("  Category distribution");
+    println!("  ═══════════════════════");
+    for (label, count) in labels.iter().zip(counts.iter()) {
+        println!("  {label:<14}{count}");
+    }
+}
+
+fn print_coverage(report: &Report) {
+    let stats = &report.stats;
+    println!("  Coverage");
+    println!("  ════════");
+    println!("  Manifests     {} files", stats.manifests);
+    println!("  Source        {} files", stats.source_files);
+    println!("  Config        {} files", stats.config_files);
+    println!("  Other         {} files", stats.other_files);
+    println!(
+        "  Skipped       {}, crawl errors: {}",
+        stats.skipped, stats.crawl_errors
+    );
+}
+
+fn print_performance(report: &Report) {
+    let perf = &report.perf;
+    let walk_secs = perf.walk_ms as f64 / 1000.0;
+    let analyze_secs = perf.analyze_ms as f64 / 1000.0;
+    let total_secs = perf.total_ms as f64 / 1000.0;
+    let files = report.stats.files_scanned as u64;
+    let findings = report.findings.len() as u64;
+
+    println!("  Performance");
+    println!("  ═══════════");
+    println!(
+        "  Walk:     {:.2}s    {}",
+        walk_secs,
+        format_rate(files, perf.walk_ms, "files")
+    );
+    println!(
+        "  Analyze:  {:.2}s    {}",
+        analyze_secs,
+        format_rate(findings, perf.analyze_ms, "findings")
+    );
+    println!(
+        "  Total:    {:.2}s    {}",
+        total_secs,
+        format_bytes(perf.bytes_scanned)
+    );
+}
+
+fn render_bar(count: usize, max: usize, width: usize) -> String {
+    if max == 0 {
+        return "░".repeat(width);
+    }
+    let filled = count.saturating_mul(width).saturating_add(max / 2) / max;
+    let filled = filled.min(width);
+    let empty = width.saturating_sub(filled);
+    let mut s = String::with_capacity(width * 3);
+    for _ in 0..filled {
+        s.push('▓');
+    }
+    for _ in 0..empty {
+        s.push('░');
+    }
+    s
+}
+
+fn format_rate(count: u64, ms: u64, unit: &str) -> String {
+    if ms == 0 {
+        return format!("{count} {unit}");
+    }
+    let per_sec = count.saturating_mul(1000) / ms;
+    if per_sec >= 1_000_000 {
+        format!("{:.1}M {unit}/s", per_sec as f64 / 1_000_000.0)
+    } else if per_sec >= 1_000 {
+        format!("{:.1}k {unit}/s", per_sec as f64 / 1_000.0)
+    } else {
+        format!("{per_sec} {unit}/s")
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        format!("{:.1} GB scanned", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB scanned", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB scanned", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B scanned")
+    }
 }
 
 fn render_finding(finding: &Finding) -> Result<(), ReporterError> {
