@@ -177,15 +177,21 @@ rastray --min-severity high || exit $?
     "crawl_errors": 0,
     "skipped": 0,
   },
+  "perf": {
+    "walk_ms": 0,
+    "analyze_ms": 0,
+    "total_ms": 0,
+    "bytes_scanned": 0,
+  },
   "findings": [
     {
       "code": "RSTR-XXX-000",
       "message": "...",
       "severity": "low|medium|high|critical|info",
-      "category": "secrets|dependencies|performance|crawler",
+      "category": "secret|dependency|performance|crawler|internal",
       "help": "remediation hint or null",
       "location": {
-        "path": "relative/path/to/file",
+        "file": "relative/path/to/file",
         "line": 0,
         "column": 0,
         "byte_offset": 0,

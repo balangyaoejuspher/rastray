@@ -56,10 +56,13 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<u8, AppError> {
+    let total_start = std::time::Instant::now();
     let format = cli.effective_format();
     let min_severity = cli.min_severity;
 
+    let walk_start = std::time::Instant::now();
     let crawl = crawler::walk_project(&cli)?;
+    let walk_ms = walk_start.elapsed().as_millis() as u64;
 
     let mut report = Report::new();
     populate_stats(&mut report, &crawl);
@@ -76,9 +79,16 @@ fn run(cli: Cli) -> Result<u8, AppError> {
         );
     }
 
+    let analyze_start = std::time::Instant::now();
     run_analyzers(&crawl, &mut report);
+    let analyze_ms = analyze_start.elapsed().as_millis() as u64;
 
     report.apply_min_severity(min_severity);
+
+    report.perf.walk_ms = walk_ms;
+    report.perf.analyze_ms = analyze_ms;
+    report.perf.total_ms = total_start.elapsed().as_millis() as u64;
+
     report.render(format)?;
 
     let exit_code = if report.has_at_or_above(min_severity) {
@@ -99,6 +109,7 @@ fn populate_stats(report: &mut Report, crawl: &CrawlSummary) {
     stats.other_files = crawl.count_of(FileKind::Other);
     stats.crawl_errors = crawl.errors.len();
     stats.skipped = crawl.skipped;
+    report.perf.bytes_scanned = crawl.files.iter().filter_map(|f| f.size).sum();
 }
 
 fn run_analyzers(crawl: &CrawlSummary, report: &mut Report) {
