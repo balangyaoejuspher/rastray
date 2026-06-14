@@ -148,6 +148,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_elixir_lockfiles(crawl) {
+            if let Ok(pkgs) = read_mix_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -321,6 +329,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_elixir_lockfiles(crawl) {
+        if let Ok(pkgs) = read_mix_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -387,6 +400,10 @@ fn collect_swift_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_dart_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "pubspec.lock")
+}
+
+fn collect_elixir_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "mix.lock")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -998,6 +1015,62 @@ fn read_pubspec_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
         }
     }
     Ok(out)
+}
+
+fn read_mix_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut out = Vec::new();
+    for raw_line in contents.lines() {
+        let line = raw_line.trim();
+        if !line.contains("{:hex,") {
+            continue;
+        }
+        let quoted = extract_quoted_strings(line);
+        if quoted.len() < 2 {
+            continue;
+        }
+        let name = quoted[0].clone();
+        let version = quoted[1].clone();
+        if name.is_empty() || version.is_empty() {
+            continue;
+        }
+        out.push(Package {
+            ecosystem: "Hex",
+            name,
+            version,
+        });
+    }
+    Ok(out)
+}
+
+fn extract_quoted_strings(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escape = false;
+    for c in line.chars() {
+        if escape {
+            current.push(c);
+            escape = false;
+            continue;
+        }
+        if c == '\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if c == '"' {
+            if in_string {
+                out.push(current.clone());
+                current.clear();
+                in_string = false;
+            } else {
+                in_string = true;
+            }
+        } else if in_string {
+            current.push(c);
+        }
+    }
+    out
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -2384,5 +2457,49 @@ mod tests {
             Err(_) => return,
         };
         assert!(pkgs.is_empty());
+    }
+
+    #[test]
+    fn read_mix_lock_extracts_hex_packages() {
+        let body = "%{\n  \"phoenix\": {:hex, :phoenix, \"1.7.10\", \"abc\", [:mix], [], \"hexpm\"},\n  \"ecto\": {:hex, :ecto, \"3.11.0\", \"def\", [:mix], [], \"hexpm\"},\n  \"telemetry\": {:hex, :telemetry, \"1.2.1\", \"ghi\", [:rebar3], [], \"hexpm\"}\n}\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-test-mix-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_mix_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 3);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "Hex");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"phoenix"));
+        assert!(names.contains(&"ecto"));
+        assert!(names.contains(&"telemetry"));
+    }
+
+    #[test]
+    fn read_mix_lock_skips_non_hex_sources() {
+        let body = "%{\n  \"phoenix\": {:hex, :phoenix, \"1.7.10\", \"abc\", [:mix], [], \"hexpm\"},\n  \"my_fork\": {:git, \"https://github.com/foo/my_fork.git\", \"abc\", []}\n}\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-test-mix-git-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_mix_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "phoenix");
+    }
+
+    #[test]
+    fn extract_quoted_strings_handles_escapes() {
+        let strings = extract_quoted_strings(r#"hello "foo" world "bar\"baz" end"#);
+        assert_eq!(strings.len(), 2);
+        assert_eq!(strings[0], "foo");
+        assert_eq!(strings[1], "bar\"baz");
     }
 }

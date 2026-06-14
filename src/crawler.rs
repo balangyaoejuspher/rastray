@@ -226,6 +226,7 @@ const MANIFEST_FILES: &[&str] = &[
     "build.gradle.kts",
     "package.resolved",
     "pubspec.lock",
+    "mix.lock",
 ];
 
 const SOURCE_EXTENSIONS: &[&str] = &[

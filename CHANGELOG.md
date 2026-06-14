@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Elixir lockfile support** for `mix.lock` (Hex). Walks the
+  Erlang-term-formatted lockfile line-by-line, extracts the two
+  quoted strings from each `{:hex, :atom, "version", ...}` tuple
+  (the package name and version), and skips entries from non-hex
+  sources like `{:git, ...}`. Feeds OSV `Hex` and emits
+  `pkg:hex/<name>@<version>` purls.
 - **Dart/Flutter lockfile support** for `pubspec.lock`. Hand-rolled
   YAML walker (matching the style of the existing `pnpm-lock.yaml`
   parser) extracts the package name and version under the
