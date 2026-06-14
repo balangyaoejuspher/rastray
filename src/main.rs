@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod baseline;
 mod cli;
 mod config;
 mod crawler;
@@ -12,6 +13,7 @@ use std::process::ExitCode;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::baseline::{Baseline, BaselineError};
 use crate::cli::{Cli, FailOn, Severity};
 use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
@@ -32,6 +34,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::config))]
     Config(#[from] ConfigError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::baseline))]
+    Baseline(#[from] BaselineError),
 }
 
 mod exit {
@@ -99,6 +105,16 @@ fn run(cli: Cli) -> Result<u8, AppError> {
 
     let mut suppressions = Suppressions::new();
     suppressions.apply(&mut report.findings);
+
+    if let Some(path) = &cli.write_baseline {
+        let snapshot = Baseline::from_findings(&report.findings);
+        snapshot.write(path)?;
+    }
+
+    if let Some(path) = &cli.baseline {
+        let baseline = Baseline::load(path)?;
+        baseline.apply(&mut report.findings);
+    }
 
     report.apply_min_severity(min_severity);
 

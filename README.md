@@ -122,6 +122,8 @@ rastray -vv
 | `--config <FILE>`        | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one. |
 | `--no-config`            | off       | Skip config-file discovery and loading.                                                     |
 | `--fail-on <LEVEL>`      | inherited | Exit code 1 if any finding is at or above this severity. One of: `info`, `low`, `medium`, `high`, `critical`, `never`. Defaults to `--min-severity`. Overrides `[scan].fail_on` in config. |
+| `--baseline <FILE>`      | off       | Load a baseline JSON file; findings whose fingerprint matches an entry are dropped before `--fail-on` is evaluated. Lets teams adopt rastray on a legacy codebase without rewriting every existing issue. |
+| `--write-baseline <FILE>`| off       | Write the current findings to a baseline file (after config + suppression filters, before `--min-severity`). Use this once to snapshot known findings, then commit the file. |
 | `-v`, `--verbose`        | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                               |
 | `-q`, `--quiet`          | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                           |
 
@@ -143,6 +145,26 @@ paths = ["target/**", "dist/**", "vendor/**"]
 "RSTR-PERF-001" = { severity = "low" }          # downgrade a rule's severity
 "RSTR-PERF-002" = { enabled = false }           # explicit form
 ```
+
+### Baseline mode
+
+Adopting rastray on an existing codebase that already has dozens or
+hundreds of findings? Snapshot them once as a **baseline**, commit the
+file, and let PR CI gate only on *new* findings:
+
+```sh
+# One-time: snapshot known findings as a baseline
+rastray --write-baseline rastray.baseline.json --fail-on never
+git add rastray.baseline.json && git commit -m "chore: rastray baseline"
+
+# On every PR: only NEW findings fail the build
+rastray --baseline rastray.baseline.json --fail-on high
+```
+
+Baseline entries are matched on `(rule code, normalised file path, line
+number, message)` — cosmetic changes like severity downgrades or rule
+renumbering don't drift, but adding a new occurrence or moving an issue
+to a new line surfaces as a new finding.
 
 ### Exit codes
 

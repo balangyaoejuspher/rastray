@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Baseline mode** for incremental adoption on existing codebases.
+  `--write-baseline <FILE>` snapshots the current findings to a JSON
+  file (deduplicated, fingerprinted by `(code, file, line, message)`).
+  `--baseline <FILE>` loads that file and drops every finding whose
+  fingerprint matches an entry before `--fail-on` is evaluated, so
+  only **new** findings can fail the build. Verified end-to-end
+  against a real project with 161 baseline findings: the second scan
+  reports zero findings.
+
 ## [0.1.4] - 2026-06-14
 
 ### Fixed

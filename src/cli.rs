@@ -106,6 +106,12 @@ pub struct Cli {
     #[arg(long = "fail-on", value_name = "LEVEL", value_parser = parse_fail_on)]
     pub fail_on: Option<FailOn>,
 
+    #[arg(long = "baseline", value_name = "FILE")]
+    pub baseline: Option<PathBuf>,
+
+    #[arg(long = "write-baseline", value_name = "FILE")]
+    pub write_baseline: Option<PathBuf>,
+
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
 
