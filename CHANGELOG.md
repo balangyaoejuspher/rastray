@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Insecure-deserialization analyzer** (`RSTR-DES-*`) for known
+  RCE-via-deserialization sinks: Python `pickle.loads` / `pickle.load`
+  / `pickle.Unpickler` (RSTR-DES-001), Python `yaml.load` without
+  SafeLoader (RSTR-DES-002), Python `marshal.loads` (RSTR-DES-003),
+  Node `node-serialize.unserialize` (RSTR-DES-004), Ruby
+  `Marshal.load` (RSTR-DES-005), Java `ObjectInputStream` /
+  `.readObject()` (RSTR-DES-006), and PHP `unserialize()`
+  (RSTR-DES-007). All five Critical except for `yaml.load`
+  which is High (depends on resolved Loader).
 - **Dockerfile / IaC analyzer** (`RSTR-IAC-*`) targeting
   `Dockerfile`, `Containerfile`, and variants (`Dockerfile.<x>`,
   `<x>.dockerfile`): image pinned to `:latest` or no tag at all
