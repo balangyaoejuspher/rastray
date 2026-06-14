@@ -165,6 +165,7 @@ impl Report {
             OutputFormat::Human => render_human(self),
             OutputFormat::GhActions => render_gh_actions(self),
             OutputFormat::Sarif => render_sarif(self, output_path),
+            OutputFormat::Cyclonedx | OutputFormat::SpdxJson => Ok(()),
         }
     }
 }

@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **SBOM output** in two industry-standard formats.
+  `--format cyclonedx` emits CycloneDX 1.5 JSON; `--format spdx-json`
+  emits SPDX 2.3 JSON. Both reuse the lockfile parsers rastray
+  already uses for CVE detection (cargo, npm, pnpm, yarn, pip, go),
+  so a single binary now covers vulnerability scanning *and* SBOM
+  generation. Each package is exported with a purl identifier for
+  drop-in compatibility with Dependency-Track, Grype, GitHub's
+  dependency graph, etc. SBOM formats skip analyzers and run in
+  roughly walk-time.
 - **Incremental scanning** for fast PR CI. `--since <REF>` (e.g.
   `--since origin/main`) restricts analyzers to files changed against
   the given git ref. `--changed-only` is shorthand for `--since HEAD~1`.

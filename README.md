@@ -112,7 +112,7 @@ rastray -vv
 | `PATH`                   | `.`       | Directory or file to scan.                                                                  |
 | `--min-severity <LEVEL>` | `low`     | Suppress findings below this severity. One of: `info`, `low`, `medium`, `high`, `critical`. |
 | `--json`                 | off       | Shortcut for `--format json`.                                                               |
-| `--format <FMT>`         | inferred  | `human`, `json`, `gh-actions`, or `sarif`. Overrides `--json` when both are set.            |
+| `--format <FMT>`         | inferred  | `human`, `json`, `gh-actions`, `sarif`, `cyclonedx`, or `spdx-json`. Overrides `--json` when both are set. `cyclonedx` and `spdx-json` emit an SBOM and skip analyzers. |
 | `-o`, `--output <FILE>`  | stdout    | Write `json` / `sarif` output to a file instead of stdout. No effect for `human`/`gh-actions`. |
 | `--no-ignore`            | off       | Ignore `.gitignore`, `.ignore`, and global ignore files.                                    |
 | `--hidden`               | off       | Descend into hidden files and directories.                                                  |
@@ -189,6 +189,27 @@ scan drops to under 1 s when only one source file changed.
 
 Requires `git` on `PATH` and the scan path to be inside a git
 repository.
+
+### SBOM output
+
+Emit a Software Bill of Materials directly from the same lockfiles
+rastray already parses for CVE detection — no second tool needed:
+
+```sh
+# CycloneDX 1.5 JSON
+rastray --format cyclonedx -o sbom.cdx.json
+
+# SPDX 2.3 JSON
+rastray --format spdx-json  -o sbom.spdx.json
+```
+
+SBOM formats skip analyzers and emit only package metadata, so they
+finish in roughly the same time as the filesystem walk. Supported
+ecosystems: `cargo`, `npm` (npm + pnpm + yarn lockfiles), `pypi`
+(`requirements.txt`), and `golang` (`go.sum`). Each package is
+exported with a [purl](https://github.com/package-url/purl-spec)
+identifier so the SBOM round-trips into Dependency-Track, Grype,
+GitHub's dependency graph, etc.
 
 ### Exit codes
 
