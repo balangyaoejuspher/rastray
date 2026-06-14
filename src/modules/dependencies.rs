@@ -132,6 +132,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_swift_lockfiles(crawl) {
+            if let Ok(pkgs) = read_swift_resolved(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -295,6 +303,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_swift_lockfiles(crawl) {
+        if let Ok(pkgs) = read_swift_resolved(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -353,6 +366,10 @@ fn collect_composer_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_nuget_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "packages.lock.json")
+}
+
+fn collect_swift_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "package.resolved")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -866,6 +883,56 @@ fn read_nuget_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
         }
     }
     Ok(out)
+}
+
+fn read_swift_resolved(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&contents).map_err(|e| ParseError::Json(e.to_string()))?;
+    let pins = value
+        .get("pins")
+        .or_else(|| value.get("object").and_then(|o| o.get("pins")))
+        .and_then(|p| p.as_array());
+    let Some(pins) = pins else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(pins.len());
+    for pin in pins {
+        let location = pin
+            .get("location")
+            .or_else(|| pin.get("repositoryURL"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let version = pin
+            .get("state")
+            .and_then(|s| s.get("version"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let name = normalize_swift_location(location);
+        if name.is_empty() || version.is_empty() {
+            continue;
+        }
+        out.push(Package {
+            ecosystem: "SwiftURL",
+            name,
+            version: version.to_string(),
+        });
+    }
+    Ok(out)
+}
+
+fn normalize_swift_location(url: &str) -> String {
+    let stripped = url
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("git@")
+        .replace(':', "/");
+    stripped.to_lowercase()
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -2115,5 +2182,104 @@ mod tests {
         };
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].name, "Has.Resolved");
+    }
+
+    #[test]
+    fn read_swift_resolved_handles_v2_pins() {
+        let body = r#"{
+  "pins": [
+    {
+      "identity": "swift-syntax",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/apple/swift-syntax.git",
+      "state": {"revision": "abc", "version": "510.0.0"}
+    },
+    {
+      "identity": "swift-collections",
+      "location": "https://github.com/apple/swift-collections.git",
+      "state": {"version": "1.1.0"}
+    }
+  ],
+  "version": 2
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-swift-v2-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_swift_resolved(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "SwiftURL");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"github.com/apple/swift-syntax"));
+        assert!(names.contains(&"github.com/apple/swift-collections"));
+    }
+
+    #[test]
+    fn read_swift_resolved_handles_v1_pins() {
+        let body = r#"{
+  "object": {
+    "pins": [
+      {
+        "package": "Alamofire",
+        "repositoryURL": "https://github.com/Alamofire/Alamofire.git",
+        "state": {"branch": null, "revision": "abc", "version": "5.8.0"}
+      }
+    ]
+  },
+  "version": 1
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-swift-v1-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_swift_resolved(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "github.com/alamofire/alamofire");
+        assert_eq!(pkgs[0].version, "5.8.0");
+    }
+
+    #[test]
+    fn read_swift_resolved_skips_pins_without_version() {
+        let body = r#"{
+  "pins": [
+    {
+      "identity": "branch-only",
+      "location": "https://github.com/foo/bar.git",
+      "state": {"branch": "main"}
+    }
+  ]
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-swift-skip-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_swift_resolved(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert!(pkgs.is_empty());
+    }
+
+    #[test]
+    fn normalize_swift_location_strips_protocol_and_git_suffix() {
+        assert_eq!(
+            normalize_swift_location("https://github.com/Apple/Swift-Syntax.git"),
+            "github.com/apple/swift-syntax"
+        );
+        assert_eq!(
+            normalize_swift_location("git@github.com:apple/swift-syntax.git"),
+            "github.com/apple/swift-syntax"
+        );
     }
 }
