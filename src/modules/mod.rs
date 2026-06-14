@@ -8,6 +8,7 @@ pub mod network;
 pub mod path_traversal;
 pub mod performance;
 pub mod secrets;
+pub mod ssrf;
 
 use thiserror::Error;
 
@@ -37,6 +38,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(iac::IacAnalyzer::new()),
         Box::new(deserialization::DeserializationAnalyzer::new()),
         Box::new(path_traversal::PathTraversalAnalyzer::new()),
+        Box::new(ssrf::SsrfAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
