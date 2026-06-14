@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`--format html`** output format. Writes a single self-
+  contained HTML report to the path given by `-o/--output`
+  (an HTML report cannot stream to stdout, so `-o` is
+  required). The report includes a header with the finding
+  count and scan time, an SVG severity donut, a category
+  bar chart, a search-box + per-severity filter chips, and a
+  sortable findings table with click-to-sort column headers.
+  CSS and JS are vendored inside the binary and inlined at
+  render time — no external scripts, no CDN, no network at
+  view time, no localhost daemon. Open with any browser
+  (`start report.html` on Windows, `open` on macOS,
+  `xdg-open` on Linux) or drag-and-drop into a browser
+  window. Respects `prefers-color-scheme` for light/dark.
+  At <720 px the table collapses into stacked cards so it
+  stays readable on phones.
+
 - **`--format markdown`** output format. Renders a self-
   contained PR-comment-ready summary: a one-line header
   (finding count + files scanned + total time), a Severity
