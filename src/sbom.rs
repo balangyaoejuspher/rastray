@@ -120,6 +120,7 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "Packagist" => "composer",
         "NuGet" => "nuget",
         "SwiftURL" => "swift",
+        "Pub" => "pub",
         other => other,
     };
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)
