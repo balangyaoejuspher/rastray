@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-14
+
 ### Added
 
 - The dependency analyzer now parses **`pnpm-lock.yaml`** (both v6
@@ -144,6 +146,7 @@ performance analyzers in a single binary.
 - The JSON output is considered stable within a minor version. Schema
   additions will be called out in this changelog.
 
-[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.2
 [0.1.1]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.1
 [0.1.0]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.0
