@@ -64,6 +64,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +126,26 @@ jobs:
           $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File -FilePath "dist/$name.zip.sha256" -Encoding ascii
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign archive with cosign (keyless)
+        env:
+          COSIGN_YES: "true"
+        shell: bash
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="rastray-v${VERSION}-${{ matrix.target }}"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            ARCHIVE="dist/${NAME}.zip"
+          else
+            ARCHIVE="dist/${NAME}.tar.gz"
+          fi
+          cosign sign-blob \
+            --bundle "${ARCHIVE}.cosign.bundle" \
+            "${ARCHIVE}"
+
       - name: Upload artifacts to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -132,8 +153,10 @@ jobs:
           files: |
             dist/rastray-*.tar.gz
             dist/rastray-*.tar.gz.sha256
+            dist/rastray-*.tar.gz.cosign.bundle
             dist/rastray-*.zip
             dist/rastray-*.zip.sha256
+            dist/rastray-*.zip.cosign.bundle
           fail_on_unmatched_files: false
 
   installers:
