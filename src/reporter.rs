@@ -44,6 +44,7 @@ impl Location {
 #[serde(rename_all = "lowercase")]
 pub enum Category {
     Secret,
+    Security,
     Dependency,
     Performance,
     Crawler,
@@ -54,6 +55,7 @@ impl Category {
     pub fn as_str(self) -> &'static str {
         match self {
             Category::Secret => "secret",
+            Category::Security => "security",
             Category::Dependency => "dependency",
             Category::Performance => "performance",
             Category::Crawler => "crawler",
@@ -420,10 +422,11 @@ fn print_category_distribution(report: &Report) {
     for f in &report.findings {
         let idx = match f.category {
             Category::Secret => 0,
-            Category::Dependency => 1,
-            Category::Performance => 2,
-            Category::Crawler => 3,
-            Category::Internal => 4,
+            Category::Security => 1,
+            Category::Dependency => 2,
+            Category::Performance => 3,
+            Category::Crawler => 4,
+            Category::Internal => 5,
         };
         counts[idx] = counts[idx].saturating_add(1);
     }
