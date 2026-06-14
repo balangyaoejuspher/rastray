@@ -108,6 +108,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_gemfile_lockfiles(crawl) {
+            if let Ok(pkgs) = read_gemfile_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -256,6 +264,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_gemfile_lockfiles(crawl) {
+        if let Ok(pkgs) = read_gemfile_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -302,6 +315,10 @@ fn collect_pipfile_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_uv_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "uv.lock")
+}
+
+fn collect_gemfile_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "gemfile.lock")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -696,6 +713,55 @@ fn read_pipfile_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
         }
     }
     Ok(out)
+}
+
+fn read_gemfile_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut out = Vec::new();
+    let mut in_specs = false;
+    for raw_line in contents.lines() {
+        if raw_line.trim().is_empty() {
+            in_specs = false;
+            continue;
+        }
+        if raw_line.trim_start() == "specs:" {
+            in_specs = true;
+            continue;
+        }
+        if !raw_line.starts_with(' ') {
+            in_specs = false;
+            continue;
+        }
+        if !in_specs {
+            continue;
+        }
+        let leading_spaces = raw_line.chars().take_while(|c| *c == ' ').count();
+        if leading_spaces != 4 {
+            continue;
+        }
+        if let Some(pkg) = parse_gemfile_spec_line(raw_line.trim_start()) {
+            out.push(pkg);
+        }
+    }
+    Ok(out)
+}
+
+fn parse_gemfile_spec_line(line: &str) -> Option<Package> {
+    let open = line.find(" (")?;
+    let close = line.rfind(')')?;
+    if close <= open + 2 {
+        return None;
+    }
+    let name = line[..open].trim();
+    let version = line[open + 2..close].trim();
+    if name.is_empty() || version.is_empty() {
+        return None;
+    }
+    Some(Package {
+        ecosystem: "RubyGems",
+        name: name.to_string(),
+        version: version.to_string(),
+    })
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -1795,5 +1861,46 @@ mod tests {
         };
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].name, "ok");
+    }
+
+    #[test]
+    fn read_gemfile_lock_extracts_top_level_specs_only() {
+        let body = "GEM\n  remote: https://rubygems.org/\n  specs:\n    actionpack (7.0.4)\n      actionview (= 7.0.4)\n      activesupport (= 7.0.4)\n    rake (13.0.6)\n    rails-html-sanitizer (1.4.4)\n      loofah (~> 2.19, >= 2.19.1)\n\nPLATFORMS\n  ruby\n\nDEPENDENCIES\n  rails\n  rake\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-test-gemfile-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_gemfile_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 3);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "RubyGems");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"actionpack"));
+        assert!(names.contains(&"rake"));
+        assert!(names.contains(&"rails-html-sanitizer"));
+        assert!(!names.contains(&"actionview"));
+        assert!(!names.contains(&"loofah"));
+    }
+
+    #[test]
+    fn parse_gemfile_spec_line_handles_name_and_version() {
+        let pkg = parse_gemfile_spec_line("rake (13.0.6)").unwrap_or(Package {
+            ecosystem: "",
+            name: String::new(),
+            version: String::new(),
+        });
+        assert_eq!(pkg.name, "rake");
+        assert_eq!(pkg.version, "13.0.6");
+    }
+
+    #[test]
+    fn parse_gemfile_spec_line_rejects_malformed_lines() {
+        assert!(parse_gemfile_spec_line("not a spec line").is_none());
+        assert!(parse_gemfile_spec_line(" (1.0.0)").is_none());
+        assert!(parse_gemfile_spec_line("name ()").is_none());
     }
 }

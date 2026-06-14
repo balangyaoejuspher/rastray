@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Ruby lockfile support** for `Gemfile.lock` (Bundler). Adds
+  CVE scanning against the OSV `RubyGems` ecosystem and emits
+  `pkg:gem/...` purls in CycloneDX and SPDX SBOMs. Only top-level
+  resolved specs are reported; nested dependency constraints under
+  each spec are intentionally skipped to avoid duplicate entries.
 - **Python lockfile support** for `poetry.lock`, `Pipfile.lock`, and
   `uv.lock`. These join the existing `requirements.txt` parser, so
   Poetry, Pipenv, and uv projects now get full CVE scanning *and*
