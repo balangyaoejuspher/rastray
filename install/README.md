@@ -48,6 +48,26 @@ Both scripts download the matching `.sha256` file from the same GitHub
 Release and verify the archive before extraction. The Unix script uses
 `sha256sum` or `shasum -a 256`; the Windows script uses `Get-FileHash`.
 
+### Cryptographic signatures (cosign)
+
+Starting with v0.1.1, every release archive ships with a matching
+`.cosign.bundle` file containing a [Sigstore](https://www.sigstore.dev/)
+keyless signature tied to the GitHub Actions workflow that built it.
+Verify with [`cosign`](https://github.com/sigstore/cosign):
+
+```sh
+cosign verify-blob \
+  --bundle rastray-v0.1.1-x86_64-unknown-linux-gnu.tar.gz.cosign.bundle \
+  --certificate-identity "https://github.com/balangyaoejuspher/rastray/.github/workflows/release.yml@refs/tags/v0.1.1" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  rastray-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+```
+
+A successful verification confirms the archive was built by this
+repository's tagged release workflow and has not been tampered with.
+
+### Offline fallback
+
 If the network is unavailable, install from source instead:
 
 ```sh
