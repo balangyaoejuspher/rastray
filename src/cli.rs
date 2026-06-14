@@ -47,6 +47,8 @@ pub enum OutputFormat {
     Json,
     GhActions,
     Sarif,
+    Cyclonedx,
+    SpdxJson,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,6 +7,7 @@ mod crawler;
 mod git_changes;
 mod modules;
 mod reporter;
+mod sbom;
 mod suppression;
 
 use std::process::ExitCode;
@@ -15,12 +16,14 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::baseline::{Baseline, BaselineError};
-use crate::cli::{Cli, FailOn, Severity};
+use crate::cli::{Cli, FailOn, OutputFormat, Severity};
 use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::git_changes::{changed_files_since, resolve_reference, GitChangesError};
+use crate::modules::dependencies::collect_packages;
 use crate::modules::{default_registry, Analyzer, AnalyzerError};
 use crate::reporter::{Category, Finding, Report, ReporterError};
+use crate::sbom::{render_cyclonedx, render_spdx_json, SbomError};
 use crate::suppression::Suppressions;
 
 #[derive(Debug, Error, Diagnostic)]
@@ -44,6 +47,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::git))]
     GitChanges(#[from] GitChangesError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::sbom))]
+    Sbom(#[from] SbomError),
 }
 
 mod exit {
@@ -95,6 +102,22 @@ fn run(cli: Cli) -> Result<u8, AppError> {
             });
     }
     let walk_ms = walk_start.elapsed().as_millis() as u64;
+
+    if matches!(format, OutputFormat::Cyclonedx | OutputFormat::SpdxJson) {
+        let packages = collect_packages(&crawl);
+        let tool_version = env!("CARGO_PKG_VERSION");
+        match format {
+            OutputFormat::Cyclonedx => {
+                render_cyclonedx(&packages, tool_version, cli.output.as_deref())?;
+            }
+            OutputFormat::SpdxJson => {
+                render_spdx_json(&packages, tool_version, cli.output.as_deref())?;
+            }
+            _ => {}
+        }
+        let _ = walk_ms;
+        return Ok(exit::OK);
+    }
 
     let mut report = Report::new();
     report.summary_only = summary_only;

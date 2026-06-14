@@ -170,6 +170,69 @@ impl Analyzer for DependenciesAnalyzer {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DiscoveredPackage {
+    pub ecosystem: &'static str,
+    pub name: String,
+    pub version: String,
+    pub source: PathBuf,
+}
+
+pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
+    let mut out: Vec<DiscoveredPackage> = Vec::new();
+
+    let mut push = |lockfile: &PathBuf, pkgs: Vec<Package>| {
+        for pkg in pkgs {
+            out.push(DiscoveredPackage {
+                ecosystem: pkg.ecosystem,
+                name: pkg.name,
+                version: pkg.version,
+                source: lockfile.clone(),
+            });
+        }
+    };
+
+    for lockfile in collect_cargo_lockfiles(crawl) {
+        if let Ok(pkgs) = read_cargo_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_npm_lockfiles(crawl) {
+        if let Ok(pkgs) = read_npm_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_pnpm_lockfiles(crawl) {
+        if let Ok(pkgs) = read_pnpm_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_yarn_lockfiles(crawl) {
+        if let Ok(pkgs) = read_yarn_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_python_requirements(crawl) {
+        if let Ok(pkgs) = read_python_requirements(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_go_sum_files(crawl) {
+        if let Ok(pkgs) = read_go_sum(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+
+    out.sort_by(|a, b| {
+        a.ecosystem
+            .cmp(b.ecosystem)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.version.cmp(&b.version))
+    });
+    out.dedup_by(|a, b| a.ecosystem == b.ecosystem && a.name == b.name && a.version == b.version);
+    out
+}
+
 fn collect_cargo_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "cargo.lock")
 }
