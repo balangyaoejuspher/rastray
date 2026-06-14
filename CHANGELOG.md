@@ -65,6 +65,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   directly in the sink call. Use CodeQL or Semgrep Pro for
   full taint analysis.
 
+- **Open-Redirect analyzer** covering Express, Flask, Django,
+  and Go (net/http). Three new rule codes, all `Medium`
+  severity (open redirect is real but lower-blast-radius
+  than SSRF/XSS — it powers phishing, not direct code
+  execution):
+  - `RSTR-RDR-001` — Express `res.redirect(req.body.*)` /
+    `res.redirect(req.query.*)` / `res.redirect(req.params.*)`
+    (also matches the status-code form `res.redirect(302, req.body.url)`).
+  - `RSTR-RDR-002` — Flask `redirect(request.args.get(...))`
+    / `redirect(request.form[...])` and Django
+    `HttpResponseRedirect(request.GET.get(...))` /
+    `HttpResponseRedirect(request.POST[...])`.
+  - `RSTR-RDR-003` — Go `http.Redirect(w, r, r.FormValue(...), 302)`
+    / `http.Redirect(w, r, r.URL.Query().Get(...), 302)`.
+
+  Same captured-call-site message convention as
+  `RSTR-SSRF-*` and `RSTR-XSS-*`. Help text gives the
+  idiomatic remediation per framework: allow-list of
+  known-safe paths for JS; `url_has_allowed_host_and_scheme`
+  for Django, `urllib.parse.urlparse` + `netloc` check for
+  Flask; allow-list before `http.Redirect` for Go.
+
+  Multi-step taint flow (intermediate-variable redirects) is
+  deliberately out of scope.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
