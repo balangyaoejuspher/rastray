@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **SSRF analyzer** (`RSTR-SSRF-*`) for HTTP-request sinks
+  that consume request input directly. Catches common
+  server-side request forgery shapes:
+  - `RSTR-SSRF-001` — JS/TS `fetch(req.body.url)`,
+    `axios.get(req.query.next)`, `axios.post(req.params.x)`,
+    etc.
+  - `RSTR-SSRF-002` — JS/TS `http.get(req.body.url)`,
+    `https.request(req.query.x)`.
+  - `RSTR-SSRF-003` — Python `requests.get(request.args.get('u'))`,
+    `urllib.request.urlopen(request.form['url'])`, etc.
+  - `RSTR-SSRF-004` — Go `http.Get(r.FormValue("url"))`,
+    `http.NewRequest(_, r.URL.Query().Get("u"), _)`.
+
+  All four are `high` severity. The finding message
+  **interpolates the actual matched call site**
+  (e.g. ``RSTR-SSRF-001: `fetch(req.body.url)` issues an HTTP request to a URL taken from request input — SSRF risk``)
+  so every finding line in a report is distinguishable at a
+  glance, not "200 copies of the same generic warning".
+  Help text is per-language: JS gets the
+  ``new URL(input).hostname`` allow-list idiom; Python and
+  Go get language-specific guidance including blocking
+  cloud-metadata addresses.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
