@@ -31,6 +31,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Go get language-specific guidance including blocking
   cloud-metadata addresses.
 
+- **XSS analyzer** covering reflected and DOM-based XSS
+  across JavaScript / TypeScript, Python (Flask), and Go
+  (net/http). Five new rule codes, all `High` severity:
+  - `RSTR-XSS-001` — Express `res.send` / `res.end` /
+    `res.write` with `req.body.*` / `req.query.*` /
+    `req.params.*` / `req.cookies.*` / `req.headers.*`.
+  - `RSTR-XSS-002` — `.innerHTML` / `.outerHTML` assigned
+    from `location.*`, `window.name`, `document.URL`,
+    `document.cookie`, `document.referrer`, `document.baseURI`,
+    `document.documentURI`.
+  - `RSTR-XSS-003` — `document.write(...)` / `document.writeln(...)`
+    with the same DOM sources.
+  - `RSTR-XSS-004` — Python Flask: `return request.args.get(...)`
+    / `return request.form[...]` directly returned as the
+    response body, or `Markup(request.x)` wrapping user
+    input.
+  - `RSTR-XSS-005` — Go: `fmt.Fprintf(w, ...)` / `fmt.Fprint`
+    / `fmt.Fprintln` / `io.WriteString(w, ...)` with
+    `r.FormValue(...)` / `r.URL.Query().Get(...)` /
+    `r.PostFormValue(...)`.
+
+  Each finding uses the captured-call-site message format,
+  so 200 findings produce 200 distinguishable lines instead
+  of 200 copies of the same warning. Help text gives an
+  idiomatic remediation per language (DOMPurify / `.textContent`
+  for JS DOM, `res.json(...)` / `he.encode(...)` for JS
+  reflected, `markupsafe.escape(...)` / Jinja2 autoescape for
+  Python, `html.EscapeString(...)` / `html/template` for Go).
+
+  Multi-step taint flow is deliberately out of scope — the
+  pattern requires the user-controlled expression to appear
+  directly in the sink call. Use CodeQL or Semgrep Pro for
+  full taint analysis.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
