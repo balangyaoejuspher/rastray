@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **TLS/network analyzer** (`RSTR-NET-*`) for transport-layer
+  misconfigurations: TLS verification disabled
+  (`verify=False`, `rejectUnauthorized: false`,
+  `InsecureSkipVerify: true`) (RSTR-NET-001), SSL hostname
+  checking disabled or `CERT_NONE` (RSTR-NET-002), CORS wildcard
+  with `credentials: true` and `Access-Control-Allow-Origin: *`
+  (RSTR-NET-003), explicit `httpOnly: false` on cookies
+  (RSTR-NET-004). Language coverage: Python, JS/TS, Go.
 - **Injection analyzer** (`RSTR-INJ-*`) for code-injection
   patterns: SQL built with f-strings or template literals
   (RSTR-INJ-001), `subprocess` with `shell=True` or `os.system`

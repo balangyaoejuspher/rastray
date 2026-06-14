@@ -1,6 +1,7 @@
 pub mod crypto;
 pub mod dependencies;
 pub mod injection;
+pub mod network;
 pub mod performance;
 pub mod secrets;
 
@@ -27,6 +28,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(secrets::SecretsAnalyzer::new()),
         Box::new(crypto::CryptoAnalyzer::new()),
         Box::new(injection::InjectionAnalyzer::new()),
+        Box::new(network::NetworkAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
