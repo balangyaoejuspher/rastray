@@ -116,6 +116,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   is deliberately out of scope; the `intermediate_variable_is_not_flagged`
   test documents this explicitly.
 
+- **XXE (XML External Entity) analyzer** covering Python
+  (stdlib `xml.etree` / `xml.sax` / `xml.dom.minidom` and
+  lxml), Node (`libxmljs` with `noent: true`, `xml2js`),
+  and Java (`DocumentBuilderFactory`, `SAXParserFactory`,
+  `XMLInputFactory`). Five new rule codes; most are
+  `High` severity (XXE → local-file disclosure and SSRF
+  via `file://` and `http://` entity URIs, occasionally
+  RCE), one is `Medium` (`RSTR-XXE-004` for `xml2js` —
+  config-level, less direct).
+  - `RSTR-XXE-001` — Python stdlib XML APIs without
+    `defusedxml`.
+  - `RSTR-XXE-002` — `lxml.etree.XMLParser(resolve_entities=True)`.
+  - `RSTR-XXE-003` — `libxmljs.parseXml(..., {noent: true})`.
+  - `RSTR-XXE-004` — `xml2js.Parser(...).parseString(input, cb)`.
+  - `RSTR-XXE-005` — Java `DocumentBuilderFactory.newInstance()` /
+    `SAXParserFactory.newInstance()` /
+    `XMLInputFactory.newInstance()` without the documented
+    feature flags that disable DOCTYPE and entity expansion.
+
+  Same captured-call-site message convention as the other
+  analyzers. Help text includes the exact remediation
+  snippet: `defusedxml.ElementTree.fromstring(...)` for
+  Python stdlib; `XMLParser(resolve_entities=False, no_network=True, load_dtd=False)`
+  for lxml; remove `noent: true` for libxmljs; the
+  full OWASP-recommended `setFeature(...)` quartet for
+  Java factories.
+
+  The Java rules deliberately flag the factory-construction
+  site rather than the parse call, because XXE in Java is
+  controlled by the factory's feature configuration — not
+  by how the parser is later invoked. A flagged
+  `newInstance()` is a TODO to apply the hardened
+  configuration; the help text spells out the exact
+  snippet.
+
+- Note on `xml.etree` deprecation: Python's docs explicitly
+  warn that stdlib XML parsers are "not secure against
+  maliciously constructed data" and recommend `defusedxml`.
+  This analyzer treats any usage on untrusted input as a
+  bug regardless of Python version.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
