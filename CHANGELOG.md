@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Python lockfile support** for `poetry.lock`, `Pipfile.lock`, and
+  `uv.lock`. These join the existing `requirements.txt` parser, so
+  Poetry, Pipenv, and uv projects now get full CVE scanning *and*
+  SBOM coverage out of the box. All three feed the same `PyPI` OSV
+  ecosystem and emit `pkg:pypi/...` purls.
 - **SBOM output** in two industry-standard formats.
   `--format cyclonedx` emits CycloneDX 1.5 JSON; `--format spdx-json`
   emits SPDX 2.3 JSON. Both reuse the lockfile parsers rastray

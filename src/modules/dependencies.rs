@@ -84,6 +84,30 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_poetry_lockfiles(crawl) {
+            if let Ok(pkgs) = read_poetry_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_pipfile_lockfiles(crawl) {
+            if let Ok(pkgs) = read_pipfile_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_uv_lockfiles(crawl) {
+            if let Ok(pkgs) = read_uv_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -217,6 +241,21 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_poetry_lockfiles(crawl) {
+        if let Ok(pkgs) = read_poetry_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_pipfile_lockfiles(crawl) {
+        if let Ok(pkgs) = read_pipfile_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_uv_lockfiles(crawl) {
+        if let Ok(pkgs) = read_uv_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -251,6 +290,18 @@ fn collect_yarn_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_python_requirements(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "requirements.txt")
+}
+
+fn collect_poetry_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "poetry.lock")
+}
+
+fn collect_pipfile_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "pipfile.lock")
+}
+
+fn collect_uv_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "uv.lock")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -582,6 +633,69 @@ fn parse_python_requirement_line(line: &str) -> Option<Package> {
 
 fn strip_python_comment(line: &str) -> &str {
     line.split_once('#').map(|(head, _)| head).unwrap_or(line)
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonTomlLock {
+    #[serde(default)]
+    package: Vec<PythonTomlLockEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonTomlLockEntry {
+    name: String,
+    version: String,
+}
+
+fn read_poetry_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    parse_python_toml_lock(path)
+}
+
+fn read_uv_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    parse_python_toml_lock(path)
+}
+
+fn parse_python_toml_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let lock: PythonTomlLock =
+        toml::from_str(&contents).map_err(|e| ParseError::Toml(e.to_string()))?;
+    let mut out = Vec::with_capacity(lock.package.len());
+    for entry in lock.package {
+        if entry.name.is_empty() || entry.version.is_empty() {
+            continue;
+        }
+        out.push(Package {
+            ecosystem: "PyPI",
+            name: entry.name,
+            version: entry.version,
+        });
+    }
+    Ok(out)
+}
+
+fn read_pipfile_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&contents).map_err(|e| ParseError::Json(e.to_string()))?;
+    let mut out = Vec::new();
+    for section in ["default", "develop"] {
+        let Some(map) = value.get(section).and_then(|s| s.as_object()) else {
+            continue;
+        };
+        for (name, info) in map {
+            let raw = info.get("version").and_then(|v| v.as_str()).unwrap_or("");
+            let version = raw.trim().trim_start_matches("==").trim();
+            if name.is_empty() || version.is_empty() {
+                continue;
+            }
+            out.push(Package {
+                ecosystem: "PyPI",
+                name: name.clone(),
+                version: version.to_string(),
+            });
+        }
+    }
+    Ok(out)
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -1486,10 +1600,10 @@ mod tests {
     #[test]
     fn read_go_sum_deduplicates_pkg_and_go_mod_pairs() {
         let body = "\
-github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
-github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
-";
+            github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+            github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+            golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
+            ";
         let tmp = std::env::temp_dir().join(format!("rastray-go-sum-{}", std::process::id()));
         let _ = std::fs::write(&tmp, body);
         let parsed = read_go_sum(&tmp);
@@ -1572,5 +1686,114 @@ golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
             Some(v) => std::env::set_var("RASTRAY_CACHE_DIR", v),
             None => std::env::remove_var("RASTRAY_CACHE_DIR"),
         }
+    }
+
+    #[test]
+    fn read_poetry_lock_extracts_packages() {
+        let body = r#"
+            [[package]]
+            name = "click"
+            version = "8.1.7"
+            description = "..."
+            category = "main"
+
+            [[package]]
+            name = "requests"
+            version = "2.31.0"
+            "#;
+        let tmp = std::env::temp_dir().join(format!("rastray-test-poetry-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_poetry_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].ecosystem, "PyPI");
+        assert_eq!(pkgs[0].name, "click");
+        assert_eq!(pkgs[0].version, "8.1.7");
+        assert_eq!(pkgs[1].name, "requests");
+    }
+
+    #[test]
+    fn read_uv_lock_extracts_packages() {
+        let body = r#"
+            version = 1
+            requires-python = ">=3.11"
+
+            [[package]]
+            name = "fastapi"
+            version = "0.110.0"
+            source = { registry = "https://pypi.org/simple" }
+
+            [[package]]
+            name = "pydantic"
+            version = "2.6.1"
+            "#;
+        let tmp = std::env::temp_dir().join(format!("rastray-test-uv-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_uv_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].ecosystem, "PyPI");
+        assert_eq!(pkgs[0].name, "fastapi");
+        assert_eq!(pkgs[0].version, "0.110.0");
+    }
+
+    #[test]
+    fn read_pipfile_lock_extracts_default_and_develop() {
+        let body = r#"{
+            "_meta": {"hash": {"sha256": "deadbeef"}},
+            "default": {
+                "click": {"version": "==8.1.7", "hashes": []},
+                "requests": {"version": "==2.31.0"}
+            },
+            "develop": {
+                "pytest": {"version": "==7.4.0"}
+            }
+            }"#;
+        let tmp = std::env::temp_dir().join(format!("rastray-test-pipfile-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pipfile_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 3);
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"click"));
+        assert!(names.contains(&"requests"));
+        assert!(names.contains(&"pytest"));
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "PyPI");
+            assert!(!p.version.starts_with("=="));
+        }
+    }
+
+    #[test]
+    fn read_pipfile_lock_skips_entries_without_version() {
+        let body = r#"{
+            "default": {
+                "broken": {"hashes": []},
+                "ok": {"version": "==1.0.0"}
+            }
+            }"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-pipfile-skip-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pipfile_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "ok");
     }
 }
