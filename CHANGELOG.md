@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **GitHub Actions workflow lint** (`RSTR-GHA-*`) targeting
+  `.github/workflows/*.{yml,yaml}` files:
+  `pull_request_target` (RSTR-GHA-001), third-party actions
+  pinned by floating tag instead of a SHA (RSTR-GHA-002),
+  `${{ github.event.*.body }}` (and similar) interpolated into
+  `run:` scripts (RSTR-GHA-003), and `persist-credentials: true`
+  on `actions/checkout` (RSTR-GHA-005). Note: only files under
+  `.github/workflows/` are inspected.
 - **TLS/network analyzer** (`RSTR-NET-*`) for transport-layer
   misconfigurations: TLS verification disabled
   (`verify=False`, `rejectUnauthorized: false`,
