@@ -207,7 +207,8 @@ SBOM formats skip analyzers and emit only package metadata, so they
 finish in roughly the same time as the filesystem walk. Supported
 ecosystems: `cargo`, `npm` (npm + pnpm + yarn lockfiles), `pypi`
 (`requirements.txt` + `poetry.lock` + `Pipfile.lock` + `uv.lock`),
-`gem` (`Gemfile.lock`), `composer` (`composer.lock`), and `golang`
+`gem` (`Gemfile.lock`), `composer` (`composer.lock`), `nuget`
+(`packages.lock.json`), and `golang`
 (`go.sum`). Each package is
 exported with a [purl](https://github.com/package-url/purl-spec)
 identifier so the SBOM round-trips into Dependency-Track, Grype,

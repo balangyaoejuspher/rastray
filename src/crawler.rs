@@ -220,6 +220,7 @@ const MANIFEST_FILES: &[&str] = &[
     "gemfile.lock",
     "composer.json",
     "composer.lock",
+    "packages.lock.json",
     "pom.xml",
     "build.gradle",
     "build.gradle.kts",
