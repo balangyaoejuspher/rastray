@@ -5,6 +5,7 @@ pub mod gha;
 pub mod iac;
 pub mod injection;
 pub mod network;
+pub mod path_traversal;
 pub mod performance;
 pub mod secrets;
 
@@ -35,6 +36,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(gha::GhaAnalyzer::new()),
         Box::new(iac::IacAnalyzer::new()),
         Box::new(deserialization::DeserializationAnalyzer::new()),
+        Box::new(path_traversal::PathTraversalAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
