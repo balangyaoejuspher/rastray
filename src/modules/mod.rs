@@ -5,6 +5,7 @@ pub mod gha;
 pub mod iac;
 pub mod injection;
 pub mod network;
+pub mod nosqli;
 pub mod open_redirect;
 pub mod path_traversal;
 pub mod performance;
@@ -47,6 +48,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(open_redirect::OpenRedirectAnalyzer::new()),
         Box::new(ssti::SstiAnalyzer::new()),
         Box::new(xxe::XxeAnalyzer::new()),
+        Box::new(nosqli::NosqliAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,

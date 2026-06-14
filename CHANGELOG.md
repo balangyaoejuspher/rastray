@@ -157,6 +157,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   This analyzer treats any usage on untrusted input as a
   bug regardless of Python version.
 
+- **NoSQL-injection analyzer** covering MongoDB-style
+  operator-injection bugs in Node and Python. Three new
+  rule codes:
+  - `RSTR-NOSQLI-001` (`High`) — Node: `.find` / `.findOne`
+    / `.updateOne` / `.deleteOne` / `.countDocuments` (full
+    list) with `{ key: req.body.x }` / `{ key: req.query.x }`
+    / etc. An attacker submitting `{ "$gt": "" }` as the
+    JSON body instead of a string bypasses the filter and
+    returns every document.
+  - `RSTR-NOSQLI-002` (`Critical`) — Node: `$where`
+    populated from a template literal interpolating
+    request input, or `$where` set directly to request
+    input. `$where` evaluates server-side JavaScript in the
+    Mongo process — this is a direct remote-code-execution
+    sink and earns Critical.
+  - `RSTR-NOSQLI-003` (`High`) — Python: pymongo
+    `.find` / `.find_one` / `.update_one` etc. with
+    `{"key": request.json['x']}` /
+    `{"key": request.args.get('x')}`.
+
+  All three follow the captured-call-site message
+  convention. Help text gives the exact remediation idiom:
+  `String(req.body.user)` / `Number(req.body.id)` coercion
+  for JS; `str(request.json['user'])` or pydantic schema
+  validation for Python; for `$where` specifically, the
+  guidance is "refactor to a structured filter expression
+  — do not use `$where` on user input at all."
+
+  Discriminator tests ensure these patterns are NOT
+  flagged:
+  - `String(req.body.user)` / `Number(req.body.id)` coerced
+    values (the documented safe pattern).
+  - `str(request.json['user'])` coercion in Python.
+  - Literal filter values (`{ user: 'alice' }`).
+  - Intermediate-variable flows (out of scope; documented
+    as the taint-analysis boundary).
+
+  `RSTR-NOSQLI-001` and `-003` deliberately skip filter
+  objects that contain a `$` operator (e.g. `{ $where: ... }`),
+  so the `$where` rule (`-002`) fires on its own without a
+  duplicate `-001` finding on the same line.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
