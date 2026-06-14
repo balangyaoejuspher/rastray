@@ -117,6 +117,7 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "PyPI" => "pypi",
         "Go" => "golang",
         "RubyGems" => "gem",
+        "Packagist" => "composer",
         other => other,
     };
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)
