@@ -139,6 +139,9 @@ pub struct Cli {
     #[arg(long = "follow-links", default_value_t = false)]
     pub follow_links: bool,
 
+    #[arg(long = "include-minified", default_value_t = false)]
+    pub include_minified: bool,
+
     #[arg(long = "threads", short = 'j', value_name = "N")]
     pub threads: Option<usize>,
 

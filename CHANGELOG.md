@@ -20,6 +20,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   into `gh pr comment --body-file scan.md` or post via a
   GitHub Actions step.
 
+- **Crawler now skips minified files by default.** Files
+  whose name contains `.min.js`, `.min.css`, `.min.mjs`,
+  `.min.cjs`, `.bundle.js`, `.bundle.mjs`, `.bundle.css`,
+  `-min.js`, or `-min.css` are skipped, as are non-minified-
+  named JS/TS/CSS files whose first 8 KB has an average line
+  length over 500 characters. This catches vendored
+  jQuery/Bootstrap and bundler output that produced
+  unactionable findings (RSTR-CRY-005, RSTR-PERF-101) with
+  source-context blocks rendering as opaque minified strings.
+  Pass `--include-minified` to scan them anyway.
+
 ## [0.2.1] - 2026-06-14
 
 ### Added
