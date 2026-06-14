@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Dockerfile / IaC analyzer** (`RSTR-IAC-*`) targeting
+  `Dockerfile`, `Containerfile`, and variants (`Dockerfile.<x>`,
+  `<x>.dockerfile`): image pinned to `:latest` or no tag at all
+  (RSTR-IAC-001), explicit `USER root` (RSTR-IAC-002), `ADD` with
+  a remote URL (RSTR-IAC-003), `chmod 777` (RSTR-IAC-005),
+  and `curl ... | sh` pipe-to-shell installers (RSTR-IAC-006).
 - **GitHub Actions workflow lint** (`RSTR-GHA-*`) targeting
   `.github/workflows/*.{yml,yaml}` files:
   `pull_request_target` (RSTR-GHA-001), third-party actions
