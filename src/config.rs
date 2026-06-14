@@ -14,6 +14,8 @@ pub struct Config {
     pub scan: ScanConfig,
     #[serde(default)]
     pub rules: HashMap<String, RuleConfig>,
+    #[serde(default)]
+    pub suppress: Vec<SuppressRule>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -45,6 +47,19 @@ pub struct RuleDetail {
     pub severity: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct SuppressRule {
+    pub path: String,
+    #[serde(default = "default_suppress_rules")]
+    pub rules: Vec<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+fn default_suppress_rules() -> Vec<String> {
+    vec!["*".to_string()]
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("failed to read config '{path}': {source}")]
@@ -61,6 +76,9 @@ pub enum ConfigError {
 
     #[error("config '{path}': invalid severity value '{value}'")]
     InvalidSeverity { path: PathBuf, value: String },
+
+    #[error("config '{path}': [[suppress]] entry has an empty `path` field")]
+    SuppressMissingPath { path: PathBuf },
 }
 
 impl Config {
@@ -134,17 +152,28 @@ impl Config {
             }
         }
 
+        let canonical_root =
+            std::fs::canonicalize(scan_root).unwrap_or_else(|_| scan_root.to_path_buf());
+
         if !self.scan.ignore.paths.is_empty() {
-            let mut builder = GitignoreBuilder::new(scan_root);
+            let mut builder = GitignoreBuilder::new(&canonical_root);
             for g in &self.scan.ignore.paths {
                 let _ = builder.add_line(None, g);
             }
             if let Ok(matcher) = builder.build() {
                 findings.retain(|f| match &f.location {
-                    Some(loc) => !matcher.matched(&loc.file, false).is_ignore(),
+                    Some(loc) => {
+                        let rel = relativize(&loc.file, &canonical_root);
+                        !matcher.matched(&rel, false).is_ignore()
+                    }
                     None => true,
                 });
             }
+        }
+
+        if !self.suppress.is_empty() {
+            let compiled = compile_suppressions(&self.suppress, &canonical_root);
+            findings.retain(|f| !suppress_matches(&compiled, f, &canonical_root));
         }
     }
 
@@ -172,12 +201,72 @@ impl Config {
                 }
             }
         }
+        for entry in &self.suppress {
+            if entry.path.trim().is_empty() {
+                return Err(ConfigError::SuppressMissingPath {
+                    path: path.to_path_buf(),
+                });
+            }
+        }
         Ok(())
     }
 }
 
 fn parse_severity(s: &str) -> Option<Severity> {
     s.parse().ok()
+}
+
+struct CompiledSuppress {
+    matcher: ignore::gitignore::Gitignore,
+    codes: Vec<String>,
+}
+
+fn compile_suppressions(entries: &[SuppressRule], scan_root: &Path) -> Vec<CompiledSuppress> {
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let mut builder = GitignoreBuilder::new(scan_root);
+        if builder.add_line(None, &entry.path).is_err() {
+            continue;
+        }
+        let matcher = match builder.build() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        out.push(CompiledSuppress {
+            matcher,
+            codes: entry.rules.clone(),
+        });
+    }
+    out
+}
+
+fn suppress_matches(
+    compiled: &[CompiledSuppress],
+    finding: &Finding,
+    canonical_root: &Path,
+) -> bool {
+    let loc = match &finding.location {
+        Some(l) => l,
+        None => return false,
+    };
+    let rel = relativize(&loc.file, canonical_root);
+    for entry in compiled {
+        if !entry.matcher.matched(&rel, false).is_ignore() {
+            continue;
+        }
+        if entry.codes.iter().any(|c| c == "*" || c == &finding.code) {
+            return true;
+        }
+    }
+    false
+}
+
+fn relativize(path: &Path, root: &Path) -> PathBuf {
+    let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    match canon.strip_prefix(root) {
+        Ok(rel) => rel.to_path_buf(),
+        Err(_) => canon,
+    }
 }
 
 #[cfg(test)]
@@ -450,5 +539,137 @@ mod tests {
             findings[0].location.as_ref().map(|l| l.file.as_path()),
             Some(Path::new("src/a.rs"))
         );
+    }
+
+    #[test]
+    fn apply_suppress_drops_matching_path_and_code() {
+        let mut cfg = Config::default();
+        cfg.suppress.push(SuppressRule {
+            path: "src/modules/secrets.rs".to_string(),
+            rules: vec!["RSTR-SEC-001".to_string()],
+            reason: None,
+        });
+        let mut findings = vec![
+            make_finding("RSTR-SEC-001", Severity::Critical, "src/modules/secrets.rs"),
+            make_finding("RSTR-SEC-002", Severity::High, "src/modules/secrets.rs"),
+            make_finding("RSTR-SEC-001", Severity::Critical, "src/main.rs"),
+        ];
+        cfg.apply(&mut findings, Path::new("."));
+        let codes: Vec<&str> = findings.iter().map(|f| f.code.as_str()).collect();
+        assert_eq!(codes, vec!["RSTR-SEC-002", "RSTR-SEC-001"]);
+    }
+
+    #[test]
+    fn apply_suppress_wildcard_code_drops_all_codes_at_path() {
+        let mut cfg = Config::default();
+        cfg.suppress.push(SuppressRule {
+            path: "src/modules/secrets.rs".to_string(),
+            rules: vec!["*".to_string()],
+            reason: None,
+        });
+        let mut findings = vec![
+            make_finding("RSTR-SEC-001", Severity::Critical, "src/modules/secrets.rs"),
+            make_finding("RSTR-SEC-007", Severity::Critical, "src/modules/secrets.rs"),
+            make_finding("RSTR-SEC-001", Severity::Critical, "src/main.rs"),
+        ];
+        cfg.apply(&mut findings, Path::new("."));
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].location.as_ref().map(|l| l.file.as_path()),
+            Some(Path::new("src/main.rs"))
+        );
+    }
+
+    #[test]
+    fn apply_suppress_glob_path_matches_subtree() {
+        let mut cfg = Config::default();
+        cfg.suppress.push(SuppressRule {
+            path: "src/modules/**".to_string(),
+            rules: vec!["RSTR-PTH-004".to_string()],
+            reason: Some("rule definitions".to_string()),
+        });
+        let mut findings = vec![
+            make_finding(
+                "RSTR-PTH-004",
+                Severity::Info,
+                "src/modules/path_traversal.rs",
+            ),
+            make_finding("RSTR-PTH-004", Severity::Info, "src/modules/secrets.rs"),
+            make_finding("RSTR-PTH-004", Severity::Info, "src/main.rs"),
+        ];
+        cfg.apply(&mut findings, Path::new("."));
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].location.as_ref().map(|l| l.file.as_path()),
+            Some(Path::new("src/main.rs"))
+        );
+    }
+
+    #[test]
+    fn apply_suppress_does_not_drop_non_matching_code() {
+        let mut cfg = Config::default();
+        cfg.suppress.push(SuppressRule {
+            path: "src/**".to_string(),
+            rules: vec!["RSTR-SEC-001".to_string()],
+            reason: None,
+        });
+        let mut findings = vec![make_finding(
+            "RSTR-PERF-001",
+            Severity::Medium,
+            "src/modules/foo.rs",
+        )];
+        cfg.apply(&mut findings, Path::new("."));
+        assert_eq!(findings.len(), 1, "PERF-001 was not in the rules list");
+    }
+
+    #[test]
+    fn load_parses_suppress_block() {
+        let dir = match tempdir() {
+            Some(d) => d,
+            None => return,
+        };
+        let path = write_config(
+            &dir,
+            "[[suppress]]\npath = \"src/modules/secrets.rs\"\nrules = [\"RSTR-SEC-001\", \"RSTR-SEC-002\"]\nreason = \"definitions\"\n",
+        );
+        let cfg = match Config::load(&path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        assert_eq!(cfg.suppress.len(), 1);
+        assert_eq!(cfg.suppress[0].path, "src/modules/secrets.rs");
+        assert_eq!(
+            cfg.suppress[0].rules,
+            vec!["RSTR-SEC-001".to_string(), "RSTR-SEC-002".to_string()]
+        );
+        assert_eq!(cfg.suppress[0].reason.as_deref(), Some("definitions"));
+    }
+
+    #[test]
+    fn load_defaults_suppress_rules_to_wildcard() {
+        let dir = match tempdir() {
+            Some(d) => d,
+            None => return,
+        };
+        let path = write_config(&dir, "[[suppress]]\npath = \"vendor/**\"\n");
+        let cfg = match Config::load(&path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        assert_eq!(cfg.suppress.len(), 1);
+        assert_eq!(cfg.suppress[0].rules, vec!["*".to_string()]);
+    }
+
+    #[test]
+    fn load_rejects_suppress_with_empty_path() {
+        let dir = match tempdir() {
+            Some(d) => d,
+            None => return,
+        };
+        let path = write_config(&dir, "[[suppress]]\npath = \"\"\n");
+        assert!(matches!(
+            Config::load(&path),
+            Err(ConfigError::SuppressMissingPath { .. })
+        ));
     }
 }

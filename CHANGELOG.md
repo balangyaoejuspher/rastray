@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`[[suppress]]` table in `.rastray.toml`** for path + rule
+  allow-listing. Each entry takes a `path` glob, an optional
+  `rules` array (defaults to `["*"]` to suppress all codes at
+  that path), and an optional `reason` string. Glob patterns
+  follow gitignore syntax — `src/modules/secrets.rs`,
+  `vendor/**`, `tests/fixtures/*.js` all work. Useful when an
+  analyzer matches its own pattern definitions, when test
+  fixtures intentionally contain example tokens, or when a
+  vendored directory has known-acceptable findings. Example:
+
+  ```toml
+  [[suppress]]
+  path = "src/modules/secrets.rs"
+  rules = ["RSTR-SEC-001", "RSTR-SEC-002"]
+  reason = "rule definitions and test fixtures"
+  ```
+
 ### Fixed
 
 - **`RSTR-PTH-004` no longer fires on ES-module / CommonJS / Rust
@@ -43,6 +62,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   side of a `+=` compound assignment. The message and severity
   are unchanged for true positives. A self-scan on this repo
   drops 8 false positives.
+
+- **`.rastray.toml` `[scan.ignore].paths` (and the new
+  `[[suppress]]` block) now match findings whose locations carry
+  canonical absolute paths.** Previously the gitignore matcher
+  was tested against the raw finding path while the matcher was
+  rooted at the canonicalized scan root, so on Windows
+  (`\\?\C:\…`) and any setup where the scan target was
+  canonicalized at crawl time, `paths = ["target/**"]` would
+  silently fail to match anything. The applier now relativises
+  every finding's path to the canonical scan root before
+  asking the matcher.
 
 - Release workflow now populates the GitHub Release body from the
   annotated tag's message (`body_path: release_notes.md` extracted
