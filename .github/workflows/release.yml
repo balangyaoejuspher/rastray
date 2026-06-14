@@ -65,6 +65,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -143,8 +144,17 @@ jobs:
             ARCHIVE="dist/${NAME}.tar.gz"
           fi
           cosign sign-blob \
+            --output-signature "${ARCHIVE}.sig" \
+            --output-certificate "${ARCHIVE}.crt" \
             --bundle "${ARCHIVE}.cosign.bundle" \
             "${ARCHIVE}"
+
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/rastray-*.tar.gz
+            dist/rastray-*.zip
 
       - name: Upload artifacts to release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -153,9 +163,13 @@ jobs:
           files: |
             dist/rastray-*.tar.gz
             dist/rastray-*.tar.gz.sha256
+            dist/rastray-*.tar.gz.sig
+            dist/rastray-*.tar.gz.crt
             dist/rastray-*.tar.gz.cosign.bundle
             dist/rastray-*.zip
             dist/rastray-*.zip.sha256
+            dist/rastray-*.zip.sig
+            dist/rastray-*.zip.crt
             dist/rastray-*.zip.cosign.bundle
           fail_on_unmatched_files: false
 
