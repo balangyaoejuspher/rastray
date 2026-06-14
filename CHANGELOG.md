@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-14
+
+Maintenance release: CI hygiene and supply-chain hardening. No
+functional code changes.
+
+### Added
+
+- Release archives are now signed with [Sigstore](https://www.sigstore.dev/)
+  cosign keyless OIDC. Each `.tar.gz` and `.zip` ships with a matching
+  `.cosign.bundle` sidecar that proves the artifact was built by this
+  repository's tagged release workflow. Verification command and
+  certificate identity documented in [`install/README.md`](install/README.md).
+
+### Changed
+
+- `release.yml` now follows least privilege: top-level `GITHUB_TOKEN`
+  permissions are `contents: read`, with only the `binaries` and
+  `installers` jobs explicitly escalating to `contents: write` to
+  upload release assets. Lifts OSSF Scorecard `Token-Permissions`
+  to a passing score.
+- All workflows bumped to Node.js 24-compatible action runtimes ahead
+  of the GitHub Actions Node 20 deprecation deadline:
+  - `actions/checkout` v4.2.2 → v6.0.3
+  - `actions/cache` v4 → v5.0.5
+  - `softprops/action-gh-release` v2 → v3.0.0
+
 ## [0.1.0] - 2026-06-13
 
 First public release. `rastray` is a polyglot static analysis CLI that
@@ -103,5 +129,6 @@ performance analyzers in a single binary.
 - The JSON output is considered stable within a minor version. Schema
   additions will be called out in this changelog.
 
-[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.1
 [0.1.0]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.0
