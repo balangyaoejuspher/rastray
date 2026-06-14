@@ -19,6 +19,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   also lowered from `low` to `info` to reflect that it is a
   heuristic substring match, not taint analysis; pass
   `--min-severity info` to see it.
+
+- **`RSTR-PERF-102` (and `RSTR-PERF-101`) no longer fire when the
+  expression is in the init / condition / update of a `for`
+  statement.** The "inside a loop" check now walks the parent
+  chain and only counts a `for`/`for-in`/`for-of` ancestor when
+  the path entered through its `body` field. Expressions that
+  run **once** at loop entry (`for (let d = new Date(start); ...)`,
+  `for (const u of await getUrls())`, `for (const k of new Map())`)
+  no longer trip these rules. `while` / `do-while` conditions
+  still count (they re-evaluate every iteration). A representative
+  NestJS + Next monorepo drops from 15 to 10 PERF-102 findings,
+  all 10 remaining being legitimate in-body allocations.
+
 - Release workflow now populates the GitHub Release body from the
   annotated tag's message (`body_path: release_notes.md` extracted
   via `git tag -l --format='%(contents:body)'`). Previously the
