@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Insecure-crypto analyzer** (`RSTR-CRY-*`) for high-severity
+  weak-crypto patterns: MD5/SHA-1 used for hashing, DES/3DES
+  ciphers, ECB mode, `Math.random()` for tokens (JS/TS), Python
+  `random` module for tokens, Go `math/rand` for tokens, Rust
+  `thread_rng()` for tokens. Language coverage: Python, JS/TS,
+  Java/Kotlin, Go, and Rust. Findings are reported under the new
+  `security` category.
 - **Java/Kotlin lockfile support** for Maven (`pom.xml` direct
   dependencies) and Gradle (`gradle.lockfile`). Maven's `pom.xml`
   parser walks `<dependencies>` blocks while skipping the
