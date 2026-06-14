@@ -118,6 +118,7 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "Go" => "golang",
         "RubyGems" => "gem",
         "Packagist" => "composer",
+        "NuGet" => "nuget",
         other => other,
     };
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)

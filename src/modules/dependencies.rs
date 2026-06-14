@@ -124,6 +124,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_nuget_lockfiles(crawl) {
+            if let Ok(pkgs) = read_nuget_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -282,6 +290,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_nuget_lockfiles(crawl) {
+        if let Ok(pkgs) = read_nuget_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -336,6 +349,10 @@ fn collect_gemfile_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_composer_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "composer.lock")
+}
+
+fn collect_nuget_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "packages.lock.json")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -809,6 +826,42 @@ fn read_composer_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
                 ecosystem: "Packagist",
                 name: name.to_string(),
                 version: version.to_string(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn read_nuget_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&contents).map_err(|e| ParseError::Json(e.to_string()))?;
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let Some(deps_root) = value.get("dependencies").and_then(|d| d.as_object()) else {
+        return Ok(out);
+    };
+    for (_tfm, tfm_deps) in deps_root {
+        let Some(map) = tfm_deps.as_object() else {
+            continue;
+        };
+        for (name, info) in map {
+            let resolved = info
+                .get("resolved")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if name.is_empty() || resolved.is_empty() {
+                continue;
+            }
+            let key = (name.clone(), resolved.to_string());
+            if !seen.insert(key) {
+                continue;
+            }
+            out.push(Package {
+                ecosystem: "NuGet",
+                name: name.clone(),
+                version: resolved.to_string(),
             });
         }
     }
@@ -2008,5 +2061,59 @@ mod tests {
         };
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].name, "ok/pkg");
+    }
+
+    #[test]
+    fn read_nuget_lock_extracts_resolved_versions_across_tfms() {
+        let body = r#"{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "Newtonsoft.Json": {"type": "Direct", "requested": "[13.0.3, )", "resolved": "13.0.3"},
+      "Serilog": {"type": "Transitive", "resolved": "3.1.1"}
+    },
+    "net6.0": {
+      "Newtonsoft.Json": {"type": "Direct", "resolved": "13.0.3"}
+    }
+  }
+}"#;
+        let tmp = std::env::temp_dir().join(format!("rastray-test-nuget-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_nuget_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "NuGet");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"Newtonsoft.Json"));
+        assert!(names.contains(&"Serilog"));
+    }
+
+    #[test]
+    fn read_nuget_lock_skips_entries_without_resolved() {
+        let body = r#"{
+  "dependencies": {
+    "net8.0": {
+      "Has.Resolved": {"resolved": "1.0.0"},
+      "Missing.Resolved": {"requested": "[1.0.0, )"}
+    }
+  }
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-nuget-skip-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_nuget_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "Has.Resolved");
     }
 }

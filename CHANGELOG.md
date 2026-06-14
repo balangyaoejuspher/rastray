@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **.NET lockfile support** for `packages.lock.json` (NuGet).
+  Walks every target framework moniker (TFM) under the
+  `dependencies` root and deduplicates packages shared across
+  TFMs by `(name, resolved_version)`. Includes both `Direct` and
+  `Transitive` dependency types. Feeds OSV `NuGet` and emits
+  `pkg:nuget/<name>@<version>` purls. Note: NuGet lockfiles are
+  only generated when `RestorePackagesWithLockFile` is enabled in
+  the project file.
 - **PHP lockfile support** for `composer.lock` (Composer). Adds
   CVE scanning against the OSV `Packagist` ecosystem and emits
   `pkg:composer/<vendor>/<name>@<version>` purls. Both the
