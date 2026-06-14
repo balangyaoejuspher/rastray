@@ -90,6 +90,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Multi-step taint flow (intermediate-variable redirects) is
   deliberately out of scope.
 
+- **SSTI (Server-Side Template Injection) analyzer**
+  covering Jinja2 / Flask and the major Node template
+  engines. Two new rule codes, both `High` severity (SSTI
+  routinely escalates to remote code execution through
+  template-engine sandbox escapes — search "Flask SSTI RCE"
+  / "Handlebars prototype pollution to RCE"):
+  - `RSTR-SSTI-001` — Python: `Template(request.x)`,
+    `jinja2.Template(request.x)`, `render_template_string(request.x)`,
+    `env.from_string(request.x)`.
+  - `RSTR-SSTI-002` — JS / TS: `pug.render(req.x)`,
+    `pug.compile(req.x)`, `Handlebars.compile(req.x)`,
+    `ejs.render(req.x)`, `nunjucks.renderString(req.x)`,
+    `Mustache.render(req.x)`.
+
+  Same captured-call-site message convention as
+  `RSTR-SSRF-*`, `RSTR-XSS-*`, and `RSTR-RDR-*`. Help text
+  emphasizes the correct pattern: load templates from disk
+  by name and pass user input as **data**, never as the
+  template body itself. `render_template('home.html', name=user)`
+  is safe; `render_template_string(user_supplied_source)`
+  is the bug.
+
+  Multi-step taint flow (intermediate-variable templates)
+  is deliberately out of scope; the `intermediate_variable_is_not_flagged`
+  test documents this explicitly.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
