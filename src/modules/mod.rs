@@ -10,6 +10,7 @@ pub mod path_traversal;
 pub mod performance;
 pub mod secrets;
 pub mod ssrf;
+pub mod ssti;
 pub mod xss;
 
 use thiserror::Error;
@@ -43,6 +44,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(ssrf::SsrfAnalyzer::new()),
         Box::new(xss::XssAnalyzer::new()),
         Box::new(open_redirect::OpenRedirectAnalyzer::new()),
+        Box::new(ssti::SstiAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
