@@ -1,8 +1,9 @@
 # GitHub Actions example
 
 A drop-in workflow that runs **rastray** against your repository on every push
-and pull request, surfaces findings as inline PR annotations, and uploads a
-SARIF report to GitHub Code Scanning.
+and pull request, surfaces findings as inline PR annotations, uploads a
+SARIF report to GitHub Code Scanning, and publishes a fresh SBOM on every
+push to `main`.
 
 ## Install
 
@@ -22,7 +23,11 @@ subsequent runs.
 
 ## What it does
 
-The workflow runs three passes:
+The workflow defines two jobs:
+
+### `scan` — static analysis (every push and PR)
+
+Three passes against the source tree:
 
 1. **Inline annotations** — `rastray . --format gh-actions --fail-on never`
    emits GitHub workflow commands so findings appear as `error` /
@@ -39,6 +44,23 @@ The workflow runs three passes:
    exists and gates the merge via branch protection. Adjust the level
    to taste (`medium`, `low`, etc.) or drop the step entirely for an
    advisory-only setup.
+
+On a **pull request**, all three passes use `--since origin/<base_ref>`
+to restrict analyzers to files that changed against the PR's target
+branch. On a real 1,000-file monorepo this cuts PR-scan time from
+~12 s to under 1 s. On pushes to `main`, the full tree is scanned.
+
+### `sbom` — Software Bill of Materials (pushes only)
+
+Generates two SBOMs in industry-standard formats and uploads them as
+workflow artifacts so they can be consumed by Dependency-Track, Grype,
+GitHub's dependency graph, etc.:
+
+- `rastray . --format cyclonedx --output sbom.cdx.json` — CycloneDX 1.5
+- `rastray . --format spdx-json --output sbom.spdx.json` — SPDX 2.3
+
+The job runs only on pushes (and manual dispatch), not on PRs, since
+the SBOM contents only change when a lockfile changes.
 
 ## Required permissions
 
@@ -62,4 +84,6 @@ requires GitHub Advanced Security.
 | Skip the network (OSV vuln lookups)   | Pass `--offline`.                                               |
 | Scan a subdirectory                   | Replace `.` with the path you want.                             |
 | Commit per-repo policy                | Drop a `.rastray.toml` at the repo root (see [`../config/`](../config/)). |
+| Suppress legacy findings on adoption  | Run `rastray --write-baseline rastray.baseline.json --fail-on never` once, commit the file, and add `--baseline rastray.baseline.json` to each rastray call. New findings still fail the build. |
 | Pin to a specific rastray version     | Set `RASTRAY_VERSION=X.Y.Z` before the installer invocation, or replace the installer with `cargo install rastray --version X.Y.Z --locked`. |
+

@@ -20,6 +20,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Needed so --since origin/<base> can diff against the PR's
+          # target branch on a PR run.
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -31,7 +35,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin/rastray
-          key: rastray-${{ runner.os }}-v0.1.0
+          key: rastray-${{ runner.os }}-v0.2.0
 
       - name: Install rastray
         run: |
@@ -40,11 +44,26 @@ jobs:
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
 
+      # On PRs, restrict the scan to changed files only (typically
+      # ~24x faster on large monorepos). On pushes to main, scan
+      # everything. If you want to suppress legacy findings during
+      # rollout, commit a baseline file and add:
+      #     --baseline rastray.baseline.json
+      # to each rastray call below.
+      - name: Compute scan scope
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "since=--since origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "since=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run rastray (inline PR annotations)
-        run: rastray . --format gh-actions --min-severity low --fail-on never
+        run: rastray . ${{ steps.scope.outputs.since }} --format gh-actions --min-severity low --fail-on never
 
       - name: Run rastray (SARIF for Code Scanning)
-        run: rastray . --format sarif --output rastray.sarif --min-severity low --fail-on never
+        run: rastray . ${{ steps.scope.outputs.since }} --format sarif --output rastray.sarif --min-severity low --fail-on never
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
@@ -62,4 +81,34 @@ jobs:
           if-no-files-found: warn
 
       - name: Enforce severity gate
-        run: rastray . --format human --fail-on high
+        run: rastray . ${{ steps.scope.outputs.since }} --format human --fail-on high
+
+  sbom:
+    name: Software Bill of Materials
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install rastray
+        run: |
+          curl -fsSL https://github.com/balangyaoejuspher/rastray/releases/latest/download/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Generate CycloneDX SBOM
+        run: rastray . --format cyclonedx --output sbom.cdx.json
+
+      - name: Generate SPDX SBOM
+        run: rastray . --format spdx-json --output sbom.spdx.json
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rastray-sbom
+          path: |
+            sbom.cdx.json
+            sbom.spdx.json
+          if-no-files-found: error

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Example GitHub Actions workflow** (`examples/github-actions/`)
+  now demonstrates the full Phase 8 surface: PR runs use
+  `--since origin/<base_ref>` for ~24x faster incremental scans, a
+  new `sbom` job uploads CycloneDX and SPDX artifacts on every push
+  to `main`, and the README shows the baseline-adoption workflow.
+
 ### Added
 
 - **SBOM output** in two industry-standard formats.
