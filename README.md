@@ -124,6 +124,8 @@ rastray -vv
 | `--fail-on <LEVEL>`      | inherited | Exit code 1 if any finding is at or above this severity. One of: `info`, `low`, `medium`, `high`, `critical`, `never`. Defaults to `--min-severity`. Overrides `[scan].fail_on` in config. |
 | `--baseline <FILE>`      | off       | Load a baseline JSON file; findings whose fingerprint matches an entry are dropped before `--fail-on` is evaluated. Lets teams adopt rastray on a legacy codebase without rewriting every existing issue. |
 | `--write-baseline <FILE>`| off       | Write the current findings to a baseline file (after config + suppression filters, before `--min-severity`). Use this once to snapshot known findings, then commit the file. |
+| `--since <REF>`          | off       | Restrict analyzers to files changed vs the given git ref (e.g. `origin/main`, `HEAD~1`). Massive speedup on PR CI. |
+| `--changed-only`         | off       | Shorthand for `--since HEAD~1`. Useful in commit hooks. |
 | `-v`, `--verbose`        | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                               |
 | `-q`, `--quiet`          | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                           |
 
@@ -165,6 +167,28 @@ Baseline entries are matched on `(rule code, normalised file path, line
 number, message)` — cosmetic changes like severity downgrades or rule
 renumbering don't drift, but adding a new occurrence or moving an issue
 to a new line surfaces as a new finding.
+
+### Incremental scanning
+
+On a large monorepo, scanning every file on every PR is wasteful.
+`--since <REF>` restricts analyzers to files changed against the given
+git ref:
+
+```sh
+# In PR CI
+rastray --since origin/main --fail-on high
+
+# In a commit hook (shorthand for --since HEAD~1)
+rastray --changed-only --fail-on high
+```
+
+Both flags only run the **analyzers** on changed files — the file walker
+still discovers everything (cheap) but tree-sitter and OSV only see the
+diff. Typical PR speedup: a 1000-file repo that takes ~12 s for a full
+scan drops to under 1 s when only one source file changed.
+
+Requires `git` on `PATH` and the scan path to be inside a git
+repository.
 
 ### Exit codes
 

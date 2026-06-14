@@ -112,6 +112,12 @@ pub struct Cli {
     #[arg(long = "write-baseline", value_name = "FILE")]
     pub write_baseline: Option<PathBuf>,
 
+    #[arg(long = "since", value_name = "REF")]
+    pub since: Option<String>,
+
+    #[arg(long = "changed-only", default_value_t = false)]
+    pub changed_only: bool,
+
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
 
