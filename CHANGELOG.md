@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Dart/Flutter lockfile support** for `pubspec.lock`. Hand-rolled
+  YAML walker (matching the style of the existing `pnpm-lock.yaml`
+  parser) extracts the package name and version under the
+  top-level `packages:` block. Feeds OSV `Pub` and emits
+  `pkg:pub/<name>@<version>` purls.
 - **Swift lockfile support** for `Package.resolved` (SwiftPM).
   Handles both the v1 schema (`object.pins`) and the current v2
   schema (top-level `pins`). Package names are normalized to

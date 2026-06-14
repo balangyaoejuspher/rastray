@@ -140,6 +140,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_dart_lockfiles(crawl) {
+            if let Ok(pkgs) = read_pubspec_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -308,6 +316,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_dart_lockfiles(crawl) {
+        if let Ok(pkgs) = read_pubspec_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -370,6 +383,10 @@ fn collect_nuget_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_swift_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "package.resolved")
+}
+
+fn collect_dart_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "pubspec.lock")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -933,6 +950,54 @@ fn normalize_swift_location(url: &str) -> String {
         .trim_start_matches("git@")
         .replace(':', "/");
     stripped.to_lowercase()
+}
+
+fn read_pubspec_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut out = Vec::new();
+    let mut in_packages = false;
+    let mut current_name: Option<String> = None;
+    for raw_line in contents.lines() {
+        if raw_line.trim().is_empty() || raw_line.trim_start().starts_with('#') {
+            continue;
+        }
+        if !raw_line.starts_with(char::is_whitespace) {
+            in_packages = raw_line.starts_with("packages:");
+            current_name = None;
+            continue;
+        }
+        if !in_packages {
+            continue;
+        }
+        let leading = raw_line.chars().take_while(|c| *c == ' ').count();
+        let stripped = raw_line.trim_start();
+        if leading == 2 {
+            if let Some(name) = stripped.strip_suffix(':') {
+                let cleaned = name.trim_matches('"').trim_matches('\'').trim();
+                if !cleaned.is_empty() {
+                    current_name = Some(cleaned.to_string());
+                }
+            }
+            continue;
+        }
+        if leading == 4 {
+            if let Some(rest) = stripped.strip_prefix("version:") {
+                let version_raw = rest.trim().trim_matches('"').trim_matches('\'').trim();
+                let Some(name) = current_name.as_ref() else {
+                    continue;
+                };
+                if version_raw.is_empty() {
+                    continue;
+                }
+                out.push(Package {
+                    ecosystem: "Pub",
+                    name: name.clone(),
+                    version: version_raw.to_string(),
+                });
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -2281,5 +2346,43 @@ mod tests {
             normalize_swift_location("git@github.com:apple/swift-syntax.git"),
             "github.com/apple/swift-syntax"
         );
+    }
+
+    #[test]
+    fn read_pubspec_lock_extracts_packages_with_versions() {
+        let body = "packages:\n  collection:\n    dependency: \"direct main\"\n    description:\n      name: collection\n      url: \"https://pub.dev\"\n    source: hosted\n    version: \"1.18.0\"\n  http:\n    dependency: \"direct main\"\n    description:\n      name: http\n    source: hosted\n    version: \"1.2.0\"\nsdks:\n  dart: \">=3.0.0 <4.0.0\"\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-test-pubspec-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pubspec_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "Pub");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"collection"));
+        assert!(names.contains(&"http"));
+        for p in &pkgs {
+            assert!(!p.version.starts_with('"'));
+        }
+    }
+
+    #[test]
+    fn read_pubspec_lock_ignores_non_packages_sections() {
+        let body = "sdks:\n  dart: \">=3.0.0 <4.0.0\"\n  flutter: \">=3.10.0\"\n";
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-pubspec-empty-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pubspec_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert!(pkgs.is_empty());
     }
 }
