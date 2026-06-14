@@ -224,6 +224,7 @@ const MANIFEST_FILES: &[&str] = &[
     "pom.xml",
     "build.gradle",
     "build.gradle.kts",
+    "gradle.lockfile",
     "package.resolved",
     "pubspec.lock",
     "mix.lock",

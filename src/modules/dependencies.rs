@@ -156,6 +156,22 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_maven_pomfiles(crawl) {
+            if let Ok(pkgs) = read_pom_xml(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_gradle_lockfiles(crawl) {
+            if let Ok(pkgs) = read_gradle_lockfile(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -334,6 +350,16 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_maven_pomfiles(crawl) {
+        if let Ok(pkgs) = read_pom_xml(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
+    for lockfile in collect_gradle_lockfiles(crawl) {
+        if let Ok(pkgs) = read_gradle_lockfile(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -404,6 +430,14 @@ fn collect_dart_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_elixir_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "mix.lock")
+}
+
+fn collect_maven_pomfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "pom.xml")
+}
+
+fn collect_gradle_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "gradle.lockfile")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -1071,6 +1105,131 @@ fn extract_quoted_strings(line: &str) -> Vec<String> {
         }
     }
     out
+}
+
+fn read_pom_xml(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let stripped = strip_xml_comments(&contents);
+    let dep_blocks = extract_dependency_blocks(&stripped);
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for block in dep_blocks {
+        let Some(group) = extract_xml_tag_text(block, "groupId") else {
+            continue;
+        };
+        let Some(artifact) = extract_xml_tag_text(block, "artifactId") else {
+            continue;
+        };
+        let Some(version) = extract_xml_tag_text(block, "version") else {
+            continue;
+        };
+        if group.contains("${") || artifact.contains("${") || version.contains("${") {
+            continue;
+        }
+        let key = (group.clone(), artifact.clone(), version.clone());
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(Package {
+            ecosystem: "Maven",
+            name: format!("{group}:{artifact}"),
+            version,
+        });
+    }
+    Ok(out)
+}
+
+fn strip_xml_comments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"<!--" {
+            if let Some(end_rel) = input[i + 4..].find("-->") {
+                i += 4 + end_rel + 3;
+                continue;
+            }
+            break;
+        }
+        out.push(input[i..].chars().next().unwrap_or(' '));
+        i += input[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+    }
+    out
+}
+
+fn extract_dependency_blocks(input: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut cursor = 0;
+    while let Some(open_rel) = input[cursor..].find("<dependency>") {
+        let open = cursor + open_rel;
+        let body_start = open + "<dependency>".len();
+        let Some(close_rel) = input[body_start..].find("</dependency>") else {
+            break;
+        };
+        let body_end = body_start + close_rel;
+        let preceding = &input[..open];
+        let last_mgmt_open = preceding.rfind("<dependencyManagement>");
+        let last_mgmt_close = preceding.rfind("</dependencyManagement>");
+        let in_mgmt = match (last_mgmt_open, last_mgmt_close) {
+            (Some(_), None) => true,
+            (Some(o), Some(c)) => o > c,
+            _ => false,
+        };
+        if !in_mgmt {
+            out.push(&input[body_start..body_end]);
+        }
+        cursor = body_end + "</dependency>".len();
+    }
+    out
+}
+
+fn extract_xml_tag_text(block: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = block.find(&open)? + open.len();
+    let end_rel = block[start..].find(&close)?;
+    let text = block[start..start + end_rel].trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_string())
+    }
+}
+
+fn read_gradle_lockfile(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for raw_line in contents.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("empty=") {
+            continue;
+        }
+        let Some(eq) = line.find('=') else {
+            continue;
+        };
+        let spec = &line[..eq];
+        let parts: Vec<&str> = spec.splitn(3, ':').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let group = parts[0].trim();
+        let name = parts[1].trim();
+        let version = parts[2].trim();
+        if group.is_empty() || name.is_empty() || version.is_empty() {
+            continue;
+        }
+        let key = (group.to_string(), name.to_string(), version.to_string());
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(Package {
+            ecosystem: "Maven",
+            name: format!("{group}:{name}"),
+            version: version.to_string(),
+        });
+    }
+    Ok(out)
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -2325,21 +2484,21 @@ mod tests {
     #[test]
     fn read_swift_resolved_handles_v2_pins() {
         let body = r#"{
-  "pins": [
-    {
-      "identity": "swift-syntax",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/apple/swift-syntax.git",
-      "state": {"revision": "abc", "version": "510.0.0"}
-    },
-    {
-      "identity": "swift-collections",
-      "location": "https://github.com/apple/swift-collections.git",
-      "state": {"version": "1.1.0"}
-    }
-  ],
-  "version": 2
-}"#;
+        "pins": [
+            {
+            "identity": "swift-syntax",
+            "kind": "remoteSourceControl",
+            "location": "https://github.com/apple/swift-syntax.git",
+            "state": {"revision": "abc", "version": "510.0.0"}
+            },
+            {
+            "identity": "swift-collections",
+            "location": "https://github.com/apple/swift-collections.git",
+            "state": {"version": "1.1.0"}
+            }
+        ],
+        "version": 2
+        }"#;
         let tmp =
             std::env::temp_dir().join(format!("rastray-test-swift-v2-{}", std::process::id()));
         let _ = std::fs::write(&tmp, body);
@@ -2361,17 +2520,17 @@ mod tests {
     #[test]
     fn read_swift_resolved_handles_v1_pins() {
         let body = r#"{
-  "object": {
-    "pins": [
-      {
-        "package": "Alamofire",
-        "repositoryURL": "https://github.com/Alamofire/Alamofire.git",
-        "state": {"branch": null, "revision": "abc", "version": "5.8.0"}
-      }
-    ]
-  },
-  "version": 1
-}"#;
+            "object": {
+                "pins": [
+                {
+                    "package": "Alamofire",
+                    "repositoryURL": "https://github.com/Alamofire/Alamofire.git",
+                    "state": {"branch": null, "revision": "abc", "version": "5.8.0"}
+                }
+                ]
+            },
+            "version": 1
+            }"#;
         let tmp =
             std::env::temp_dir().join(format!("rastray-test-swift-v1-{}", std::process::id()));
         let _ = std::fs::write(&tmp, body);
@@ -2501,5 +2660,125 @@ mod tests {
         assert_eq!(strings.len(), 2);
         assert_eq!(strings[0], "foo");
         assert_eq!(strings[1], "bar\"baz");
+    }
+
+    #[test]
+    fn read_pom_xml_extracts_direct_dependencies_only() {
+        let body = r#"<?xml version="1.0"?>
+            <project>
+            <dependencyManagement>
+                <dependencies>
+                <dependency>
+                    <groupId>org.springframework</groupId>
+                    <artifactId>spring-core</artifactId>
+                    <version>6.1.0</version>
+                </dependency>
+                </dependencies>
+            </dependencyManagement>
+            <dependencies>
+                <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-text</artifactId>
+                <version>1.10.0</version>
+                </dependency>
+                <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>2.15.0</version>
+                </dependency>
+            </dependencies>
+            </project>
+            "#;
+        let tmp = std::env::temp_dir().join(format!("rastray-test-pom-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pom_xml(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "Maven");
+            assert!(p.name.contains(':'));
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"org.apache.commons:commons-text"));
+        assert!(names.contains(&"com.fasterxml.jackson.core:jackson-databind"));
+        assert!(!names.iter().any(|n| n.contains("spring-core")));
+    }
+
+    #[test]
+    fn read_pom_xml_skips_property_substituted_versions() {
+        let body = r#"<project>
+            <dependencies>
+                <dependency>
+                <groupId>org.example</groupId>
+                <artifactId>direct</artifactId>
+                <version>1.0.0</version>
+                </dependency>
+                <dependency>
+                <groupId>org.example</groupId>
+                <artifactId>property-ref</artifactId>
+                <version>${spring.version}</version>
+                </dependency>
+            </dependencies>
+            </project>
+            "#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-pom-prop-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_pom_xml(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "org.example:direct");
+    }
+
+    #[test]
+    fn read_gradle_lockfile_parses_group_name_version_lines() {
+        let body = "# This file is locked by Gradle.\norg.apache.commons:commons-text:1.10.0=compileClasspath,runtimeClasspath\ncom.fasterxml.jackson.core:jackson-databind:2.15.0=runtimeClasspath\nempty=annotationProcessor,testAnnotationProcessor\n";
+        let tmp = std::env::temp_dir().join(format!("rastray-test-gradle-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_gradle_lockfile(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "Maven");
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"org.apache.commons:commons-text"));
+        assert!(names.contains(&"com.fasterxml.jackson.core:jackson-databind"));
+    }
+
+    #[test]
+    fn read_gradle_lockfile_skips_malformed_lines() {
+        let body =
+            "no-colons-here=something\nnot:enough:fields\norg.ok:pkg:1.0.0=runtimeClasspath\n";
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-gradle-skip-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_gradle_lockfile(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "org.ok:pkg");
+        assert_eq!(pkgs[0].version, "1.0.0");
+    }
+
+    #[test]
+    fn strip_xml_comments_removes_comment_blocks() {
+        let input = "before<!-- comment -->after";
+        assert_eq!(strip_xml_comments(input), "beforeafter");
     }
 }

@@ -122,8 +122,13 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "SwiftURL" => "swift",
         "Pub" => "pub",
         "Hex" => "hex",
+        "Maven" => "maven",
         other => other,
     };
+    if pkg.ecosystem == "Maven" {
+        let name_path = pkg.name.replacen(':', "/", 1);
+        return format!("pkg:{typ}/{}@{}", name_path, pkg.version);
+    }
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)
 }
 
