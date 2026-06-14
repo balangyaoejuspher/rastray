@@ -417,30 +417,33 @@ fn severity_counts(report: &Report) -> [usize; 5] {
     counts
 }
 
-fn print_category_distribution(report: &Report) {
-    let mut counts = [0usize; 5];
-    for f in &report.findings {
-        let idx = match f.category {
-            Category::Secret => 0,
-            Category::Security => 1,
-            Category::Dependency => 2,
-            Category::Performance => 3,
-            Category::Crawler => 4,
-            Category::Internal => 5,
-        };
-        counts[idx] = counts[idx].saturating_add(1);
-    }
-    let labels = [
-        "Secrets",
-        "Dependencies",
-        "Performance",
-        "Crawler",
-        "Internal",
-    ];
+const CATEGORY_BUCKETS: &[(&str, Category)] = &[
+    ("Secrets", Category::Secret),
+    ("Security", Category::Security),
+    ("Dependencies", Category::Dependency),
+    ("Performance", Category::Performance),
+    ("Crawler", Category::Crawler),
+    ("Internal", Category::Internal),
+];
 
+fn category_counts(report: &Report) -> Vec<(&'static str, usize)> {
+    CATEGORY_BUCKETS
+        .iter()
+        .map(|(label, category)| {
+            let count = report
+                .findings
+                .iter()
+                .filter(|f| f.category == *category)
+                .count();
+            (*label, count)
+        })
+        .collect()
+}
+
+fn print_category_distribution(report: &Report) {
     println!("  Category distribution");
     println!("  ═══════════════════════");
-    for (label, count) in labels.iter().zip(counts.iter()) {
+    for (label, count) in category_counts(report) {
         println!("  {label:<14}{count}");
     }
 }
@@ -600,6 +603,60 @@ mod tests {
     fn severity_counts_empty_report_is_all_zero() {
         let report = Report::new();
         assert_eq!(severity_counts(&report), [0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn category_counts_label_to_count_pairing_is_correct() {
+        let mut report = Report::new();
+        report.push(finding(Severity::High, Category::Security));
+        report.push(finding(Severity::High, Category::Security));
+        report.push(finding(Severity::Medium, Category::Performance));
+        report.push(finding(Severity::Low, Category::Dependency));
+        let counts = category_counts(&report);
+        let lookup = |needle: &str| -> usize {
+            counts
+                .iter()
+                .find(|(label, _)| *label == needle)
+                .map(|(_, n)| *n)
+                .unwrap_or(usize::MAX)
+        };
+        assert_eq!(lookup("Secrets"), 0);
+        assert_eq!(lookup("Security"), 2);
+        assert_eq!(lookup("Dependencies"), 1);
+        assert_eq!(lookup("Performance"), 1);
+        assert_eq!(lookup("Crawler"), 0);
+        assert_eq!(lookup("Internal"), 0);
+    }
+
+    #[test]
+    fn category_counts_handles_internal_category_without_panic() {
+        let mut report = Report::new();
+        report.push(finding(Severity::Info, Category::Internal));
+        report.push(finding(Severity::Info, Category::Internal));
+        let counts = category_counts(&report);
+        let internal = counts
+            .iter()
+            .find(|(label, _)| *label == "Internal")
+            .map(|(_, n)| *n)
+            .unwrap_or(0);
+        assert_eq!(internal, 2);
+    }
+
+    #[test]
+    fn category_counts_covers_every_category_variant() {
+        for variant in [
+            Category::Secret,
+            Category::Security,
+            Category::Dependency,
+            Category::Performance,
+            Category::Crawler,
+            Category::Internal,
+        ] {
+            assert!(
+                CATEGORY_BUCKETS.iter().any(|(_, c)| *c == variant),
+                "category {variant:?} missing from CATEGORY_BUCKETS — summary block would silently drop it"
+            );
+        }
     }
 
     #[test]
