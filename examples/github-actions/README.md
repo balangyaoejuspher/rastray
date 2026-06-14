@@ -84,6 +84,8 @@ requires GitHub Advanced Security.
 | Skip the network (OSV vuln lookups)   | Pass `--offline`.                                               |
 | Scan a subdirectory                   | Replace `.` with the path you want.                             |
 | Commit per-repo policy                | Drop a `.rastray.toml` at the repo root (see [`../config/`](../config/)). |
+| Post a markdown summary as a PR comment | Add a step like:<br>``rastray . --format markdown --since origin/${{ github.base_ref }} -o scan.md --fail-on never``<br>then ``gh pr comment ${{ github.event.pull_request.number }} --body-file scan.md`` (needs ``pull-requests: write`` permission and ``GITHUB_TOKEN``). |
+| Attach an HTML report as a CI artifact | Add ``rastray . --format html -o rastray-report.html --fail-on never`` and upload with ``actions/upload-artifact``. Reviewers download + open in any browser; no localhost or external assets. |
 | Suppress legacy findings on adoption  | Run `rastray --write-baseline rastray.baseline.json --fail-on never` once, commit the file, and add `--baseline rastray.baseline.json` to each rastray call. New findings still fail the build. |
 | Pin to a specific rastray version     | Set `RASTRAY_VERSION=X.Y.Z` before the installer invocation, or replace the installer with `cargo install rastray --version X.Y.Z --locked`. |
 
