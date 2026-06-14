@@ -74,6 +74,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   every finding's path to the canonical scan root before
   asking the matcher.
 
+- **Inline summary block's Category distribution now shows the
+  correct count next to each label, includes a `Security` row,
+  and no longer panics on `Category::Internal` findings.** The
+  previous implementation used a 5-slot count array against
+  6 enum variants, with the label list missing `Security`, so on
+  any scan with security or dependency findings the counts were
+  shifted by one (e.g. security counts rendered under the
+  `Dependencies` label) and an `Internal`-category finding would
+  index out of bounds and panic. Each category now has an
+  explicit label-to-variant pair, and `category_counts` is now a
+  testable helper with three regression tests guarding the
+  pairing, the no-panic path for `Internal`, and exhaustive
+  variant coverage.
+
 - Release workflow now populates the GitHub Release body from the
   annotated tag's message (`body_path: release_notes.md` extracted
   via `git tag -l --format='%(contents:body)'`). Previously the
