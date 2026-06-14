@@ -146,11 +146,14 @@ jobs:
           cosign sign-blob \
             --bundle "${ARCHIVE}.cosign.bundle" \
             "${ARCHIVE}"
-          cosign sign-blob \
-            --output-signature "${ARCHIVE}.sig" \
-            --output-certificate "${ARCHIVE}.crt" \
-            --new-bundle-format=false \
-            "${ARCHIVE}"
+          jq -r '.messageSignature.signature' "${ARCHIVE}.cosign.bundle" \
+            > "${ARCHIVE}.sig"
+          {
+            printf -- '-----BEGIN CERTIFICATE-----\n'
+            jq -r '.verificationMaterial.certificate.rawBytes' \
+              "${ARCHIVE}.cosign.bundle" | fold -w 64
+            printf -- '-----END CERTIFICATE-----\n'
+          } > "${ARCHIVE}.crt"
 
       - name: Generate SLSA build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
