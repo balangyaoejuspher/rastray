@@ -47,6 +47,11 @@ impl Analyzer for PathTraversalAnalyzer {
                     continue;
                 }
                 for m in pattern.regex.find_iter(&contents) {
+                    if pattern.code == "RSTR-PTH-004"
+                        && is_module_specifier_line(line_containing(&contents, m.start()))
+                    {
+                        continue;
+                    }
                     let (line, column) = byte_offset_to_line_col(&contents, m.start());
                     let location = Location::file(file.path.clone())
                         .with_span(m.start(), m.len())
@@ -126,7 +131,7 @@ const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
         code: "RSTR-PTH-004",
         message: "literal '../../' in a string; review whether the path is constructed safely",
-        severity: Severity::Low,
+        severity: Severity::Info,
         help: "if the traversal is intentional and safe, suppress this finding; otherwise refactor to an allow-listed path",
         pattern: r"\.\./\.\./",
         extensions: &[
@@ -160,6 +165,34 @@ fn compiled_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
             message: format!("failed to compile a builtin path-traversal pattern: {e}"),
         }),
     }
+}
+
+fn line_containing(text: &str, offset: usize) -> &str {
+    let start = text[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let end = text[offset..]
+        .find('\n')
+        .map(|i| offset + i)
+        .unwrap_or(text.len());
+    &text[start..end]
+}
+
+fn is_module_specifier_line(line: &str) -> bool {
+    let trimmed = line.trim_start_matches('\u{FEFF}').trim_start();
+    let starts_with_keyword = |word: &str| {
+        trimmed.strip_prefix(word).is_some_and(|rest| {
+            rest.is_empty()
+                || rest.starts_with(|c: char| c.is_whitespace())
+                || rest.starts_with(['{', '(', '"', '\'', '*'])
+        })
+    };
+    if starts_with_keyword("import")
+        || starts_with_keyword("export")
+        || starts_with_keyword("from")
+        || starts_with_keyword("use")
+    {
+        return true;
+    }
+    line.contains("require(") || line.contains("import(")
 }
 
 fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
@@ -252,5 +285,48 @@ mod tests {
         let Some(re) = re else { return };
         assert!(re.is_match(r#"path = "../../etc/passwd""#));
         assert!(!re.is_match(r#"path = "./subdir/file""#));
+    }
+
+    #[test]
+    fn module_specifier_lines_are_recognized() {
+        assert!(is_module_specifier_line("import { Foo } from '../../bar'"));
+        assert!(is_module_specifier_line(
+            "  import type { X } from \"../../baz\""
+        ));
+        assert!(is_module_specifier_line("import('../../dyn')"));
+        assert!(is_module_specifier_line(
+            "export { default } from '../../mod'"
+        ));
+        assert!(is_module_specifier_line("from x import y"));
+        assert!(is_module_specifier_line("const f = require('../../m')"));
+        assert!(is_module_specifier_line("use crate::foo;"));
+        assert!(is_module_specifier_line(
+            "\u{FEFF}import { Foo } from '../../bar'"
+        ));
+        assert!(!is_module_specifier_line(
+            "let path = \"../../etc/passwd\";"
+        ));
+        assert!(!is_module_specifier_line("// imported earlier"));
+        assert!(!is_module_specifier_line("important = 1"));
+    }
+
+    #[test]
+    fn line_containing_returns_full_line() {
+        let text = "alpha\nbeta gamma\ndelta";
+        assert_eq!(line_containing(text, 0), "alpha");
+        assert_eq!(line_containing(text, 6), "beta gamma");
+        assert_eq!(line_containing(text, 9), "beta gamma");
+        assert_eq!(line_containing(text, 18), "delta");
+    }
+
+    #[test]
+    fn pth_004_is_info_severity() {
+        let Ok(patterns) = compiled_patterns() else {
+            return;
+        };
+        let Some(spec) = patterns.iter().find(|p| p.code == "RSTR-PTH-004") else {
+            return;
+        };
+        assert_eq!(spec.severity, Severity::Info);
     }
 }

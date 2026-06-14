@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **`RSTR-PTH-004` no longer fires on ES-module / CommonJS / Rust
+  `use` imports.** The literal-`../../` heuristic now inspects the
+  line containing the match and skips it if the line is an
+  `import ... from '...'`, `export ... from '...'`,
+  `from ... import ...`, `require('...')`, `import('...')`, or
+  Rust `use crate::...;` statement. On a real JS/TS monorepo this
+  removes hundreds of false positives that were just relative
+  import specifiers, not file-system access. The rule severity is
+  also lowered from `low` to `info` to reflect that it is a
+  heuristic substring match, not taint analysis; pass
+  `--min-severity info` to see it.
 - Release workflow now populates the GitHub Release body from the
   annotated tag's message (`body_path: release_notes.md` extracted
   via `git tag -l --format='%(contents:body)'`). Previously the
