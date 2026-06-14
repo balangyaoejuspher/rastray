@@ -121,6 +121,7 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "NuGet" => "nuget",
         "SwiftURL" => "swift",
         "Pub" => "pub",
+        "Hex" => "hex",
         other => other,
     };
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)
