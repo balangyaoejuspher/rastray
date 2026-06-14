@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Injection analyzer** (`RSTR-INJ-*`) for code-injection
+  patterns: SQL built with f-strings or template literals
+  (RSTR-INJ-001), `subprocess` with `shell=True` or `os.system`
+  with a string arg (RSTR-INJ-002), `eval`/`exec`/`new Function`
+  on user-influenced input (RSTR-INJ-003), `child_process.exec`
+  with a template literal or string concatenation
+  (RSTR-INJ-004), and Go `exec.Command("sh", "-c", ...)`
+  (RSTR-INJ-005). Language coverage: Python, JS/TS, Go, PHP.
 - **Insecure-crypto analyzer** (`RSTR-CRY-*`) for high-severity
   weak-crypto patterns: MD5/SHA-1 used for hashing, DES/3DES
   ciphers, ECB mode, `Math.random()` for tokens (JS/TS), Python
