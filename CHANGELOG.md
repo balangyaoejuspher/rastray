@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Incremental scanning** for fast PR CI. `--since <REF>` (e.g.
+  `--since origin/main`) restricts analyzers to files changed against
+  the given git ref. `--changed-only` is shorthand for `--since HEAD~1`.
+  On a real 1,007-file repo, scanning a single-file PR drops from
+  ~12 s (full scan) to under 1 s.
 - **Baseline mode** for incremental adoption on existing codebases.
   `--write-baseline <FILE>` snapshots the current findings to a JSON
   file (deduplicated, fingerprinted by `(code, file, line, message)`).

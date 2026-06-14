@@ -4,6 +4,7 @@ mod baseline;
 mod cli;
 mod config;
 mod crawler;
+mod git_changes;
 mod modules;
 mod reporter;
 mod suppression;
@@ -17,6 +18,7 @@ use crate::baseline::{Baseline, BaselineError};
 use crate::cli::{Cli, FailOn, Severity};
 use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
+use crate::git_changes::{changed_files_since, resolve_reference, GitChangesError};
 use crate::modules::{default_registry, Analyzer, AnalyzerError};
 use crate::reporter::{Category, Finding, Report, ReporterError};
 use crate::suppression::Suppressions;
@@ -38,6 +40,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::baseline))]
     Baseline(#[from] BaselineError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::git))]
+    GitChanges(#[from] GitChangesError),
 }
 
 mod exit {
@@ -78,7 +84,16 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     let config = load_config(&cli)?;
 
     let walk_start = std::time::Instant::now();
-    let crawl = crawler::walk_project(&cli)?;
+    let mut crawl = crawler::walk_project(&cli)?;
+    if let Some(reference) = resolve_reference(cli.since.as_deref(), cli.changed_only) {
+        let changed = changed_files_since(&cli.path, &reference)?;
+        crawl
+            .files
+            .retain(|f| match std::fs::canonicalize(&f.path) {
+                Ok(canonical) => changed.contains(&canonical),
+                Err(_) => changed.contains(&f.path),
+            });
+    }
     let walk_ms = walk_start.elapsed().as_millis() as u64;
 
     let mut report = Report::new();
