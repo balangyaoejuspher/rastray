@@ -144,9 +144,12 @@ jobs:
             ARCHIVE="dist/${NAME}.tar.gz"
           fi
           cosign sign-blob \
+            --bundle "${ARCHIVE}.cosign.bundle" \
+            "${ARCHIVE}"
+          cosign sign-blob \
             --output-signature "${ARCHIVE}.sig" \
             --output-certificate "${ARCHIVE}.crt" \
-            --bundle "${ARCHIVE}.cosign.bundle" \
+            --new-bundle-format=false \
             "${ARCHIVE}"
 
       - name: Generate SLSA build provenance
