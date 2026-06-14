@@ -254,3 +254,34 @@ fn fail_on_medium_returns_one_when_medium_findings_exist() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn rastray_toml_suppress_block_drops_matching_findings() {
+    let dir = match make_fixture("suppress") {
+        Some(d) => d,
+        None => return,
+    };
+
+    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+    write_file(
+        &dir,
+        ".rastray.toml",
+        "[[suppress]]\npath = \"config.js\"\nrules = [\"RSTR-SEC-001\"]\nreason = \"test fixture\"\n",
+    );
+
+    let json = match run_json(&dir, &[]) {
+        Some(j) => j,
+        None => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+
+    assert_eq!(
+        count_findings_with_code(&json, "RSTR-SEC-001"),
+        0,
+        "[[suppress]] entry should drop the AWS key finding"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

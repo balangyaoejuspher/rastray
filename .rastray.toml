@@ -1,0 +1,19 @@
+[[suppress]]
+path = "src/modules/secrets.rs"
+rules = ["RSTR-SEC-001", "RSTR-SEC-002", "RSTR-SEC-007"]
+reason = "secret-pattern definitions and the analyzer's own test fixtures"
+
+[[suppress]]
+path = "src/modules/crypto.rs"
+rules = ["RSTR-CRY-007"]
+reason = "rule definition message string mentions thread_rng()"
+
+[[suppress]]
+path = "src/modules/path_traversal.rs"
+rules = ["RSTR-PTH-004"]
+reason = "rule pattern and test fixtures contain literal ../../ strings"
+
+[[suppress]]
+path = "tests/**"
+rules = ["RSTR-SEC-001", "RSTR-SEC-002"]
+reason = "integration test fixtures contain example tokens"
