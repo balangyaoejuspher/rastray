@@ -133,19 +133,28 @@ fn find_new_date_in_loops(
 }
 
 fn in_loop_body_within_fn(start: Node) -> bool {
+    let mut prev = start;
     let mut current = start.parent();
     while let Some(node) = current {
         match node.kind() {
-            "for_statement" | "for_in_statement" | "for_of_statement" | "while_statement"
-            | "do_statement" => return true,
+            "for_statement" | "for_in_statement" | "for_of_statement" => {
+                if let Some(body) = node.child_by_field_name("body") {
+                    if prev.id() == body.id() {
+                        return true;
+                    }
+                }
+            }
+            "while_statement" | "do_statement" => return true,
             "function_declaration"
             | "function_expression"
             | "arrow_function"
             | "method_definition"
             | "generator_function"
             | "generator_function_declaration" => return false,
-            _ => current = node.parent(),
+            _ => {}
         }
+        prev = node;
+        current = node.parent();
     }
     false
 }
@@ -294,5 +303,85 @@ mod tests {
     #[test]
     fn invalid_js_syntax_does_not_panic() {
         let _ = run_js("function broken( { return ");
+    }
+
+    #[test]
+    fn new_date_in_for_initializer_is_not_flagged() {
+        let src = r#"
+            function walk(end) {
+                for (let d = new Date(end); d < end; d.setDate(d.getDate() + 1)) {
+                    console.log(d);
+                }
+            }
+        "#;
+        let findings = run_js(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-102")
+                .count(),
+            0,
+            "new Date() in for-init runs once, not per iteration"
+        );
+    }
+
+    #[test]
+    fn new_date_in_for_of_iterable_is_not_flagged() {
+        let src = r#"
+            function dump() {
+                for (const k of new Map()) {
+                    console.log(k);
+                }
+            }
+        "#;
+        let findings = run_js(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-102")
+                .count(),
+            0,
+            "new Map() in for-of iterable runs once, not per iteration"
+        );
+    }
+
+    #[test]
+    fn new_date_in_while_condition_is_flagged() {
+        let src = r#"
+            function poll() {
+                while (new Date().getTime() < deadline) {
+                    spin();
+                }
+            }
+        "#;
+        let findings = run_js(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-102")
+                .count(),
+            1,
+            "while condition is re-evaluated each iteration"
+        );
+    }
+
+    #[test]
+    fn await_in_for_of_iterable_is_not_flagged() {
+        let src = r#"
+            async function each() {
+                for (const u of await getUrls()) {
+                    process(u);
+                }
+            }
+        "#;
+        let findings = run_js(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-101")
+                .count(),
+            0,
+            "await in for-of iterable runs once, not per iteration"
+        );
     }
 }
