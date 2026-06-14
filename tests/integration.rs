@@ -216,7 +216,7 @@ fn fail_on_high_returns_zero_when_only_medium_findings_exist() {
     write_file(
         &dir,
         "src.rs",
-        "fn build() { for i in 0..10 { let _ = format!(\"{i}\"); } }\n",
+        "fn build() -> String { let mut s = String::new(); for i in 0..10 { s.push_str(&format!(\"{i}\")); } s }\n",
     );
 
     let code = match run_exit_code(&dir, &["--fail-on", "high"]) {
@@ -240,7 +240,7 @@ fn fail_on_medium_returns_one_when_medium_findings_exist() {
     write_file(
         &dir,
         "src.rs",
-        "fn build() { for i in 0..10 { let _ = format!(\"{i}\"); } }\n",
+        "fn build() -> String { let mut s = String::new(); for i in 0..10 { s.push_str(&format!(\"{i}\")); } s }\n",
     );
 
     let code = match run_exit_code(&dir, &["--fail-on", "medium"]) {

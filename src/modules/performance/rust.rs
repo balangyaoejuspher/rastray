@@ -50,7 +50,13 @@ fn find_format_in_loops(
             if name != "format" {
                 continue;
             }
-            if !has_loop_ancestor_within_fn(cap.node) {
+            let Some(macro_node) = cap.node.parent() else {
+                continue;
+            };
+            if !has_loop_ancestor_within_fn(macro_node) {
+                continue;
+            }
+            if !is_string_accumulator_use(macro_node, bytes) {
                 continue;
             }
             findings.push(build_finding(
@@ -58,13 +64,53 @@ fn find_format_in_loops(
                 source,
                 cap.node,
                 "RSTR-PERF-001",
-                "format! macro called inside a loop",
+                "format! used to extend a String inside a loop allocates a temporary per iteration",
                 Severity::Medium,
-                "format! allocates a new String per call; consider write! into a pre-allocated String",
+                "write directly into the existing String with write!(&mut s, ...) (from std::fmt::Write) to avoid the intermediate allocation",
             ));
         }
     }
     findings
+}
+
+fn is_string_accumulator_use(macro_node: Node, bytes: &[u8]) -> bool {
+    let unwrapped = macro_node
+        .parent()
+        .filter(|p| p.kind() == "reference_expression")
+        .unwrap_or(macro_node);
+    let Some(parent) = unwrapped.parent() else {
+        return false;
+    };
+    match parent.kind() {
+        "compound_assignment_expr" => {
+            let rhs_match = parent
+                .child_by_field_name("right")
+                .is_some_and(|n| n.id() == unwrapped.id());
+            let op_match = parent
+                .child_by_field_name("operator")
+                .and_then(|op| op.utf8_text(bytes).ok())
+                .is_some_and(|s| s == "+=");
+            rhs_match && op_match
+        }
+        "arguments" => {
+            let Some(call) = parent.parent() else {
+                return false;
+            };
+            if call.kind() != "call_expression" {
+                return false;
+            }
+            let Some(func) = call.child_by_field_name("function") else {
+                return false;
+            };
+            if func.kind() != "field_expression" {
+                return false;
+            }
+            func.child_by_field_name("field")
+                .and_then(|f| f.utf8_text(bytes).ok())
+                .is_some_and(|s| s == "push_str")
+        }
+        _ => false,
+    }
 }
 
 fn find_clone_in_for_iter(
@@ -180,14 +226,16 @@ mod tests {
     }
 
     #[test]
-    fn format_inside_while_loop_is_flagged() {
+    fn format_inside_while_loop_with_push_str_is_flagged() {
         let src = r#"
-            fn run_it() {
+            fn run_it() -> String {
+                let mut s = String::new();
                 let mut i = 0;
                 while i < 10 {
-                    let _ = format!("{i}");
+                    s.push_str(&format!("{i}"));
                     i += 1;
                 }
+                s
             }
         "#;
         let findings = run(src);
@@ -196,20 +244,107 @@ mod tests {
     }
 
     #[test]
-    fn format_inside_loop_keyword_is_flagged() {
+    fn format_inside_loop_keyword_with_push_str_is_flagged() {
         let src = r#"
-            fn run_it() {
+            fn run_it() -> String {
+                let mut s = String::new();
                 let mut i = 0;
                 loop {
-                    let _ = format!("{i}");
+                    s.push_str(&format!("{i}"));
                     i += 1;
                     if i > 5 { break; }
                 }
+                s
             }
         "#;
         let findings = run(src);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "RSTR-PERF-001");
+    }
+
+    #[test]
+    fn format_inside_loop_as_let_binding_is_not_flagged() {
+        let src = r#"
+            fn run_it() {
+                for i in 0..10 {
+                    let _ = format!("{i}");
+                }
+            }
+        "#;
+        let findings = run(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-001")
+                .count(),
+            0,
+            "a discarded format! result is a one-off allocation, not a string accumulator"
+        );
+    }
+
+    #[test]
+    fn format_inside_loop_as_function_argument_is_not_flagged() {
+        let src = r#"
+            fn log(s: String) {}
+            fn run_it() {
+                for i in 0..10 {
+                    log(format!("{i}"));
+                }
+            }
+        "#;
+        let findings = run(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-001")
+                .count(),
+            0,
+            "format! handed to a function is one allocation per call, not a string accumulator"
+        );
+    }
+
+    #[test]
+    fn format_inside_loop_as_struct_field_is_not_flagged() {
+        let src = r#"
+            struct Item { name: String }
+            fn run_it() -> Vec<Item> {
+                let mut out = Vec::new();
+                for i in 0..10 {
+                    out.push(Item { name: format!("name {i}") });
+                }
+                out
+            }
+        "#;
+        let findings = run(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-001")
+                .count(),
+            0,
+            "format! constructing a struct field is one allocation, not a string accumulator"
+        );
+    }
+
+    #[test]
+    fn format_inside_loop_with_compound_add_assign_is_flagged() {
+        let src = r#"
+            fn run_it() -> String {
+                let mut s = String::new();
+                for i in 0..10 {
+                    s += &format!("{i}");
+                }
+                s
+            }
+        "#;
+        let findings = run(src);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "RSTR-PERF-001")
+                .count(),
+            1
+        );
     }
 
     #[test]

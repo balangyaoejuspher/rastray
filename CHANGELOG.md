@@ -32,6 +32,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   NestJS + Next monorepo drops from 15 to 10 PERF-102 findings,
   all 10 remaining being legitimate in-body allocations.
 
+- **`RSTR-PERF-001` is now scoped to the string-accumulation
+  pattern it was originally meant to catch.** Previously it fired
+  on any `format!` call inside any loop body, which matched all
+  routine error-message construction, struct-field initialisers,
+  `Finding::new(...)` arguments, and one-time cache-key building
+  — none of which are hot-path bugs. The rule now requires the
+  `format!` result to flow into a string accumulator: either as
+  the argument of a `.push_str(...)` call, or as the right-hand
+  side of a `+=` compound assignment. The message and severity
+  are unchanged for true positives. A self-scan on this repo
+  drops 8 false positives.
+
 - Release workflow now populates the GitHub Release body from the
   annotated tag's message (`body_path: release_notes.md` extracted
   via `git tag -l --format='%(contents:body)'`). Previously the
