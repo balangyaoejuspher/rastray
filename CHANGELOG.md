@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`--format markdown`** output format. Renders a self-
+  contained PR-comment-ready summary: a one-line header
+  (finding count + files scanned + total time), a Severity
+  table, a Category table, and per-severity finding tables
+  collapsed in `<details>` blocks. Default cut-offs: all
+  Critical findings, up to 10 High, 5 Medium, 5 Low; Info is
+  omitted from the finding tables (counted in the Severity
+  table). The remainder per bucket is summarized with a
+  pointer to `--format json` for the full list. Drop straight
+  into `gh pr comment --body-file scan.md` or post via a
+  GitHub Actions step.
+
 ## [0.2.1] - 2026-06-14
 
 ### Added

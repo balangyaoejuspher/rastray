@@ -285,3 +285,42 @@ fn rastray_toml_suppress_block_drops_matching_findings() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn rastray_format_markdown_produces_pr_ready_output() {
+    let dir = match make_fixture("format-markdown") {
+        Some(d) => d,
+        None => return,
+    };
+
+    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let output = match Command::new(&bin)
+        .arg(&dir)
+        .arg("--format")
+        .arg("markdown")
+        .arg("--min-severity")
+        .arg("info")
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+    assert!(stdout.starts_with("## rastray scan"));
+    assert!(stdout.contains("### Severity"));
+    assert!(stdout.contains("### Category"));
+    assert!(stdout.contains("### Findings"));
+    assert!(stdout.contains("`RSTR-SEC-001`") || stdout.contains("RSTR-SEC-001"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
