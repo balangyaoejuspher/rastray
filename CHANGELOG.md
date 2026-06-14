@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Path-traversal analyzer** (`RSTR-PTH-*`) for file-system
+  sinks that consume web-request input: Flask `send_file`
+  (RSTR-PTH-001), Express `res.sendFile` /
+  `fs.readFile`/`writeFile`/`createReadStream` (RSTR-PTH-002),
+  Java `new File(request.getParameter(...))` (RSTR-PTH-003),
+  and literal `../../` substrings in source (RSTR-PTH-004).
+  Note: this is heuristic regex matching, not taint analysis;
+  some false positives expected for intentional, sanitized
+  paths.
 - **Insecure-deserialization analyzer** (`RSTR-DES-*`) for known
   RCE-via-deserialization sinks: Python `pickle.loads` / `pickle.load`
   / `pickle.Unpickler` (RSTR-DES-001), Python `yaml.load` without
