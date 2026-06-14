@@ -407,7 +407,7 @@ fn markdown_document(report: &Report) -> String {
             let take = bucket.len().min(cap);
             shown_total += take;
             out.push_str(&format!(
-                "<details open><summary><strong>{}</strong> — showing {} of {}</summary>\n\n",
+                "<details open>\n<summary><strong>{}</strong> — showing {} of {}</summary>\n\n",
                 severity.as_str().to_ascii_uppercase(),
                 take,
                 bucket.len()
