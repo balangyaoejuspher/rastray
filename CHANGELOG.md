@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The dependency analyzer now parses **`pnpm-lock.yaml`** (both v6
+  slash-prefix and v9 no-prefix entry styles) and **`yarn.lock`** (v1
+  classic format and v2/v3 Berry YAML format). All extracted packages
+  feed the existing OSV.dev vulnerability lookup pipeline as the `npm`
+  ecosystem.
+
+### Fixed
+
+- OSV batch queries now chunk into groups of 1000 packages each,
+  matching OSV.dev's documented per-request limit. Previously, scanning
+  a project with more than 1000 lockfile entries failed with
+  `400 Bad Request` and the dependency analyzer reported no findings.
+
 ## [0.1.1] - 2026-06-14
 
 Maintenance release: CI hygiene and supply-chain hardening. No
