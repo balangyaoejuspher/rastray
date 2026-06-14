@@ -114,11 +114,12 @@ rastray -vv
 | `PATH`                   | `.`       | Directory or file to scan.                                                                  |
 | `--min-severity <LEVEL>` | `low`     | Suppress findings below this severity. One of: `info`, `low`, `medium`, `high`, `critical`. |
 | `--json`                 | off       | Shortcut for `--format json`.                                                               |
-| `--format <FMT>`         | inferred  | `human`, `json`, `gh-actions`, `sarif`, `cyclonedx`, or `spdx-json`. Overrides `--json` when both are set. `cyclonedx` and `spdx-json` emit an SBOM and skip analyzers. |
-| `-o`, `--output <FILE>`  | stdout    | Write `json` / `sarif` output to a file instead of stdout. No effect for `human`/`gh-actions`. |
+| `--format <FMT>`         | inferred  | `human`, `json`, `gh-actions`, `sarif`, `markdown`, `html`, `cyclonedx`, or `spdx-json`. Overrides `--json` when both are set. `html` requires `-o`. `cyclonedx` and `spdx-json` emit an SBOM and skip analyzers. |
+| `-o`, `--output <FILE>`  | stdout    | Write `json` / `sarif` / `markdown` / `html` / SBOM output to a file instead of stdout. Required for `html`. No effect for `human` / `gh-actions`. |
 | `--no-ignore`            | off       | Ignore `.gitignore`, `.ignore`, and global ignore files.                                    |
 | `--hidden`               | off       | Descend into hidden files and directories.                                                  |
 | `--follow-links`         | off       | Follow symlinks during the walk.                                                            |
+| `--include-minified`     | off       | Scan minified files (`*.min.js`, `*.bundle.css`, etc.) that are skipped by default. Detection uses both name patterns and an average-line-length probe over the first 8 KB. |
 | `-j`, `--threads <N>`    | auto      | Worker thread count for the parallel crawler.                                               |
 | `--max-depth <N>`        | unlimited | Cap directory recursion depth.                                                              |
 | `--config <FILE>`        | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one. |
@@ -217,6 +218,32 @@ exported with a [purl](https://github.com/package-url/purl-spec)
 identifier so the SBOM round-trips into Dependency-Track, Grype,
 GitHub's dependency graph, etc.
 
+### Visual reports
+
+For sharing scan results outside the terminal, rastray emits two
+human-friendly formats. Both are **single self-contained files** —
+no localhost server, no CDN, no network at view time.
+
+```sh
+# Single-file HTML report — open in any browser (file://). Includes
+# an SVG severity donut, category bar chart, search box, severity
+# chips, and a sortable findings table. Respects prefers-color-scheme
+# for light/dark; collapses to stacked cards at <720 px.
+rastray . --format html -o report.html
+start report.html        # Windows  (open / xdg-open on macOS / Linux)
+
+# Markdown summary — paste straight into a GitHub PR comment. Top of
+# report is a Severity + Category table; per-severity finding tables
+# are wrapped in <details open> blocks with sensible caps (all
+# Critical, top 10 High, top 5 Medium, top 5 Low).
+rastray . --format markdown -o scan.md
+gh pr comment 123 --body-file scan.md
+```
+
+The HTML report is one self-contained file, so it works equally well
+as a `gh release` asset, a CI artifact (`actions/upload-artifact`),
+or an email attachment. The recipient just opens it — no install.
+
 ### Exit codes
 
 `rastray` follows the standard CI-friendly convention:
@@ -265,7 +292,7 @@ rastray --min-severity high || exit $?
 
 - **`main.rs`** — orchestrator. Installs the `miette` hook, parses CLI, runs the crawler, dispatches analyzers, applies severity filtering, renders, returns `ExitCode`.
 - **`cli.rs`** — `clap` derive structs (`Cli`, `Severity`, `OutputFormat`). Handles `--json` / `--format` reconciliation.
-- **`crawler.rs`** — parallel filesystem walk. Hard-blocks noise dirs (`.git`, `node_modules`, `target`, `dist`, `build`, `.venv`, `venv`, `__pycache__`). Classifies each entry as `Manifest | Source | Config | Other`.
+- **`crawler.rs`** — parallel filesystem walk. Hard-blocks noise dirs (`.git`, `node_modules`, `target`, `dist`, `build`, `.venv`, `venv`, `__pycache__`) and minified files (`*.min.js`, `*.bundle.css`, plus any JS/TS/CSS whose first 8 KB averages over 500 chars per line). Classifies each remaining entry as `Manifest | Source | Config | Other`.
 - **`reporter.rs`** — `Finding`, `Location`, `Report`. Dual renderer: `miette::Diagnostic` for humans, `serde_json::to_string_pretty` for machines. Source spans are read lazily and degrade gracefully on I/O errors.
 - **`modules/`** — analyzer trait + registry. New analyzers implement `Analyzer` and are appended to `default_registry()`.
 
