@@ -1,6 +1,7 @@
 pub mod crypto;
 pub mod dependencies;
 pub mod gha;
+pub mod iac;
 pub mod injection;
 pub mod network;
 pub mod performance;
@@ -31,6 +32,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(injection::InjectionAnalyzer::new()),
         Box::new(network::NetworkAnalyzer::new()),
         Box::new(gha::GhaAnalyzer::new()),
+        Box::new(iac::IacAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
