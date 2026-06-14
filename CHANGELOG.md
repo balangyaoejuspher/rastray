@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-14
+
+### Fixed
+
+- `cosign sign-blob` is now invoked twice per release archive so that
+  `.sig` and `.crt` sidecars actually land in the GitHub Release
+  alongside `.cosign.bundle`. cosign 2.x silently drops
+  `--output-signature` and `--output-certificate` when `--bundle` is
+  passed in the same call, so v0.1.3 shipped without the legacy
+  sidecars that the OSSF Scorecard `Signed-Releases` check looks for.
+
 ## [0.1.3] - 2026-06-14
 
 ### Added
@@ -159,7 +170,8 @@ performance analyzers in a single binary.
 - The JSON output is considered stable within a minor version. Schema
   additions will be called out in this changelog.
 
-[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.4
 [0.1.3]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.3
 [0.1.2]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.2
 [0.1.1]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.1
