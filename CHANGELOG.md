@@ -16,6 +16,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Java/Kotlin lockfile support** for Maven (`pom.xml` direct
+  dependencies) and Gradle (`gradle.lockfile`). Maven's `pom.xml`
+  parser walks `<dependencies>` blocks while skipping the
+  `<dependencyManagement>` section, and skips entries whose
+  `<version>` is a `${property}` reference (those require
+  property resolution we don't do). Gradle's `gradle.lockfile`
+  parser handles the `group:name:version=<configs>` line format
+  and skips `empty=` and `#` comment lines. Both feed OSV `Maven`
+  and emit `pkg:maven/<groupId>/<artifactId>@<version>` purls
+  (the first `:` is rewritten to `/` for purl spec compliance).
 - **Elixir lockfile support** for `mix.lock` (Hex). Walks the
   Erlang-term-formatted lockfile line-by-line, extracts the two
   quoted strings from each `{:hex, :atom, "version", ...}` tuple
