@@ -118,12 +118,13 @@ pub fn walk_project(cli: &Cli) -> Result<CrawlSummary, CrawlError> {
         summary
     });
 
+    let include_minified = cli.include_minified;
     walker.run(|| {
         let tx = tx.clone();
         Box::new(move |result| {
             match result {
                 Ok(entry) => {
-                    if let Some(message) = classify_entry(&entry) {
+                    if let Some(message) = classify_entry(&entry, include_minified) {
                         if tx.send(message).is_err() {
                             return WalkState::Quit;
                         }
@@ -152,7 +153,7 @@ enum WalkMessage {
     Err(String),
 }
 
-fn classify_entry(entry: &DirEntry) -> Option<WalkMessage> {
+fn classify_entry(entry: &DirEntry, include_minified: bool) -> Option<WalkMessage> {
     let file_type = entry.file_type()?;
     if !file_type.is_file() {
         return Some(WalkMessage::Skip);
@@ -160,10 +161,92 @@ fn classify_entry(entry: &DirEntry) -> Option<WalkMessage> {
 
     let path = entry.path().to_path_buf();
     let kind = classify_path(&path);
+
+    if !include_minified && is_minified_file(&path) {
+        return Some(WalkMessage::Skip);
+    }
+
     let size = entry.metadata().ok().map(|m| m.len());
 
     Some(WalkMessage::File(DiscoveredFile { path, kind, size }))
 }
+
+fn is_minified_file(path: &Path) -> bool {
+    if has_minified_name(path) {
+        return true;
+    }
+    if !is_textual_extension(path) {
+        return false;
+    }
+    looks_minified_by_content(path)
+}
+
+fn has_minified_name(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let lower = file_name.to_ascii_lowercase();
+    for marker in MINIFIED_NAME_MARKERS {
+        if lower.contains(marker) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_textual_extension(path: &Path) -> bool {
+    let Some(ext) = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+    else {
+        return false;
+    };
+    TEXTUAL_EXTENSIONS_FOR_MINIFIED_SCAN.contains(&ext.as_str())
+}
+
+fn looks_minified_by_content(path: &Path) -> bool {
+    use std::io::Read;
+
+    const PROBE_BYTES: usize = 8 * 1024;
+    const MIN_PROBE_BYTES: usize = 256;
+    const AVG_LINE_LENGTH_THRESHOLD: usize = 500;
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut buf = vec![0u8; PROBE_BYTES];
+    let Ok(read) = file.read(&mut buf) else {
+        return false;
+    };
+    if read < MIN_PROBE_BYTES {
+        return false;
+    }
+    buf.truncate(read);
+    if buf.contains(&0) {
+        return false;
+    }
+    let Ok(text) = std::str::from_utf8(&buf) else {
+        return false;
+    };
+    let lines = text.split('\n').count().max(1);
+    text.len() / lines >= AVG_LINE_LENGTH_THRESHOLD
+}
+
+const MINIFIED_NAME_MARKERS: &[&str] = &[
+    ".min.js",
+    ".min.mjs",
+    ".min.cjs",
+    ".min.css",
+    ".bundle.js",
+    ".bundle.mjs",
+    ".bundle.css",
+    "-min.js",
+    "-min.css",
+];
+
+const TEXTUAL_EXTENSIONS_FOR_MINIFIED_SCAN: &[&str] =
+    &["js", "mjs", "cjs", "jsx", "ts", "tsx", "css"];
 
 fn classify_path(path: &Path) -> FileKind {
     let file_name = path
@@ -318,6 +401,86 @@ mod tests {
         assert_eq!(classify_path(Path::new("README")), FileKind::Other);
         assert_eq!(classify_path(Path::new("image.png")), FileKind::Other);
         assert_eq!(classify_path(Path::new("archive.tar.gz")), FileKind::Other);
+    }
+
+    #[test]
+    fn has_minified_name_recognises_common_patterns() {
+        assert!(has_minified_name(Path::new("jquery.min.js")));
+        assert!(has_minified_name(Path::new("Bootstrap.Min.Css")));
+        assert!(has_minified_name(Path::new("vendor.bundle.js")));
+        assert!(has_minified_name(Path::new("app-min.js")));
+        assert!(has_minified_name(Path::new("path/to/lib.min.mjs")));
+        assert!(!has_minified_name(Path::new("jquery.js")));
+        assert!(!has_minified_name(Path::new("admin.js")));
+        assert!(!has_minified_name(Path::new("minified-runner.test.ts")));
+    }
+
+    #[test]
+    fn is_textual_extension_only_targets_web_assets() {
+        assert!(is_textual_extension(Path::new("a.js")));
+        assert!(is_textual_extension(Path::new("a.MJS")));
+        assert!(is_textual_extension(Path::new("a.css")));
+        assert!(is_textual_extension(Path::new("a.ts")));
+        assert!(!is_textual_extension(Path::new("a.rs")));
+        assert!(!is_textual_extension(Path::new("a.py")));
+        assert!(!is_textual_extension(Path::new("noext")));
+    }
+
+    #[test]
+    fn looks_minified_by_content_flags_long_single_line_js() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-crawler-min-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("blob.js");
+        let mut payload = String::with_capacity(2048);
+        while payload.len() < 1600 {
+            payload.push_str("function a(b){return b.x}var c=1;");
+        }
+        if let Ok(mut f) = std::fs::File::create(&path) {
+            let _ = f.write_all(payload.as_bytes());
+        }
+        assert!(looks_minified_by_content(&path));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn looks_minified_by_content_keeps_normal_source_files() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-crawler-min-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("normal.js");
+        let body =
+            "function add(a, b) {\n    return a + b;\n}\n\nmodule.exports = { add };\n".repeat(20);
+        if let Ok(mut f) = std::fs::File::create(&path) {
+            let _ = f.write_all(body.as_bytes());
+        }
+        assert!(!looks_minified_by_content(&path));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn looks_minified_by_content_ignores_too_small_files() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-crawler-min-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("tiny.js");
+        if let Ok(mut f) = std::fs::File::create(&path) {
+            let _ = f.write_all(&[b'a'; 100]);
+        }
+        assert!(!looks_minified_by_content(&path));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
