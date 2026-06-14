@@ -212,6 +212,7 @@ const MANIFEST_FILES: &[&str] = &[
     "pipfile",
     "pipfile.lock",
     "poetry.lock",
+    "uv.lock",
     "pyproject.toml",
     "go.mod",
     "go.sum",
