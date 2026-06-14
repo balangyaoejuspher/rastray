@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Release workflow now populates the GitHub Release body from the
+  annotated tag's message (`body_path: release_notes.md` extracted
+  via `git tag -l --format='%(contents:body)'`). Previously the
+  release was created with an empty body even though the tag
+  carried full release notes.
+
+### Changed
+
+- README now displays Crates.io version and download badges.
+
 ## [0.2.0] - 2026-06-14
 
 ### Changed

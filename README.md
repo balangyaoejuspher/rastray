@@ -1,5 +1,7 @@
 # rastray
 
+[![Crates.io](https://img.shields.io/crates/v/rastray.svg?logo=rust)](https://crates.io/crates/rastray)
+[![Downloads](https://img.shields.io/crates/d/rastray.svg)](https://crates.io/crates/rastray)
 [![CI](https://github.com/balangyaoejuspher/rastray/actions/workflows/ci.yml/badge.svg)](https://github.com/balangyaoejuspher/rastray/actions/workflows/ci.yml)
 [![Security audit](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml/badge.svg)](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/balangyaoejuspher/rastray/badge)](https://securityscorecards.dev/viewer/?uri=github.com/balangyaoejuspher/rastray)
