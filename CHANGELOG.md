@@ -8,50 +8,100 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.0] - 2026-06-13
 
+First public release. `rastray` is a polyglot static analysis CLI that
+ships secret detection, dependency vulnerability scanning, and per-language
+performance analyzers in a single binary.
+
 ### Added
 
-- **Phase 6 — Configuration & suppression**
-  - `.rastray.toml` configuration file with rule enable/disable, per-rule severity overrides, ignore-path globs, and `fail_on` threshold. Auto-discovered up the directory tree; overridable via `--config <FILE>`, skippable via `--no-config`.
-  - Inline suppression directives in scanned files: `rastray-ignore` (next line), `rastray-ignore-line` (same line), `rastray-ignore-file` (whole file). Comma-separated code lists and the `*` wildcard are supported.
-  - `--fail-on <LEVEL>` CLI flag and matching `[scan].fail_on` config field. Accepted values: `info`, `low`, `medium`, `high`, `critical`, `never`. Resolution order: CLI > config > `--min-severity` default.
-  - Four drop-in example configurations under [`examples/config/`](examples/config/) (`minimal`, `advisory`, `strict`, `monorepo`).
-- **Phase 5 — Output formats**
-  - `--format gh-actions` emits GitHub Actions workflow commands so findings render as inline PR annotations (`error` / `warning` / `notice`).
-  - `--format sarif` emits SARIF 2.1.0 documents for GitHub Code Scanning and IDE consumers. Severity → SARIF level: Critical/High → `error`, Medium → `warning`, Low/Info → `note`.
-  - `-o, --output <FILE>` flag routes JSON and SARIF output to disk (no effect on `human` / `gh-actions`).
-  - Drop-in [`examples/github-actions/rastray.yml`](examples/github-actions/rastray.yml) workflow that ships inline annotations, SARIF upload via `github/codeql-action/upload-sarif`, and an explicit `--fail-on high` severity gate.
-- **Phase 4 — Performance analyzers** (tree-sitter ASTs)
-  - Rust: `RSTR-PERF-001` (`format!` in loops, medium), `RSTR-PERF-002` (`.clone()` on iterators in `for`, low).
-  - TypeScript / JavaScript / TSX: `RSTR-PERF-101` (`await` in loops, medium), `RSTR-PERF-102` (`new Date()` in loops, low).
-  - Python: `RSTR-PERF-201` (string `+=` in loops, medium), `RSTR-PERF-202` (`time.sleep` in `async def`, high).
-  - Go: `RSTR-PERF-301` (`defer` in for loops, medium), `RSTR-PERF-302` (`fmt.Sprintf` in loops, low).
-- **Phase 3 — Dependency vulnerability analyzer**
-  - Parses `Cargo.lock`, `package-lock.json`, `requirements.txt`, and `go.sum` into a generic `Package { ecosystem, name, version }`.
-  - Queries [OSV.dev](https://osv.dev) `/v1/querybatch` with per-vulnerability hydration. CVSS-v3/v4 and GHSA-textual severity mapping.
-  - 24-hour JSON cache at `%LOCALAPPDATA%\rastray\osv-cache.json` (Windows) / `$XDG_CACHE_HOME/rastray/` (Linux), overridable via `$RASTRAY_CACHE_DIR`.
-  - `--offline` and `--no-cache` flags for air-gapped and fresh-run CI environments.
-- **Phase 2 — Secret detection analyzer**
-  - Eight regex patterns: AWS access key, GitHub PAT (classic + fine-grained), Slack bot token, Stripe live key, Google API key, PEM private key, npm token.
-  - Shannon-entropy filter (threshold 3.0) to suppress placeholders; PEM literal bypass for the deterministic header match.
-  - Lazy `OnceLock`-cached compiled patterns.
-- **Phase 1 — Foundation**
-  - `clap`-derive CLI, parallel `ignore::WalkBuilder` crawler with mpsc aggregator.
-  - `miette`-powered human reporter; JSON reporter; `Analyzer` trait registry.
-  - Documented JSON output schema (`stats` + `findings`).
-  - Documented exit codes (`0` clean, `1` findings, `2` runtime error).
-  - Hardened release profile (`lto = "thin"`, `codegen-units = 1`, `strip = "symbols"`, `panic = "abort"`).
-  - MSRV set to `1.86.0`.
+#### Analyzers
 
-### Changed
+- **Secret detection** — eight regex patterns out of the box: AWS access
+  key (`AKIA*`), GitHub PAT (classic `ghp_*` and fine-grained
+  `github_pat_*`), Slack bot (`xoxb-*`), Stripe live (`sk_live_*`),
+  Google API (`AIza*`), PEM private key, npm token (`npm_*`). Shannon
+  entropy filtering (default threshold 3.0) suppresses placeholders and
+  example tokens; PEM headers bypass the entropy gate.
+- **Dependency vulnerabilities** — parses `Cargo.lock`,
+  `package-lock.json`, `requirements.txt`, and `go.sum`, then queries
+  [OSV.dev](https://osv.dev) `/v1/querybatch` with per-vulnerability
+  hydration. CVSS v3/v4 and GHSA textual severity mapping. Findings are
+  cached for 24 h in `%LOCALAPPDATA%\rastray\osv-cache.json` (Windows) or
+  `$XDG_CACHE_HOME/rastray/` (Linux); override with `$RASTRAY_CACHE_DIR`.
+- **Performance** (tree-sitter ASTs) across Rust, TypeScript / JavaScript
+  / TSX, Python, and Go:
+  - Rust — `format!` in loops, `.clone()` on iterators inside `for`
+  - TypeScript / JavaScript — `await` in loops, `new Date()` in loops
+  - Python — string `+=` in loops, `time.sleep` in `async def`
+  - Go — `defer` inside `for`, `fmt.Sprintf` in loops
 
-- Locked TLS stack to `rustls` (removed `native-tls` / OpenSSL surface).
-- `tokio` pinned with minimal features (`rt-multi-thread`, `macros`, `net`, `io-util`, `time`, `sync`) instead of `full`.
-- `thiserror` upgraded to `2.x`, `miette` to `7.6`, `tree-sitter` to `0.25`.
+#### Output formats
+
+- `--format human` (default) — `miette`-rendered diagnostics with source
+  spans and help text.
+- `--format json` — stable schema documented in the README.
+- `--format gh-actions` — GitHub Actions workflow commands so findings
+  render as inline PR annotations (`error` / `warning` / `notice`).
+- `--format sarif` — SARIF 2.1.0 for GitHub Code Scanning and IDE
+  integrations. Severities map as Critical/High → `error`,
+  Medium → `warning`, Low/Info → `note`.
+- `-o, --output <FILE>` routes `json` and `sarif` payloads to disk.
+
+#### Configuration
+
+- `.rastray.toml` is auto-discovered up the directory tree. Override
+  with `--config <FILE>` or skip with `--no-config`.
+- Per-rule enable/disable and per-rule severity overrides.
+- Glob-based ignore paths under `[scan.ignore]`.
+- `[scan].fail_on` and matching `--fail-on <LEVEL>` flag control the
+  exit code threshold independently of `--min-severity`. Accepts
+  `info`, `low`, `medium`, `high`, `critical`, or `never`. Resolution
+  order: CLI > config > `--min-severity` default.
+
+#### Suppression
+
+- Inline directives in scanned source files, language-agnostic
+  (works inside `//`, `#`, or `/* */` comments):
+  - `rastray-ignore: <CODE>` — suppresses the next line
+  - `rastray-ignore-line: <CODE>` — suppresses the same line
+  - `rastray-ignore-file: <CODE>` — suppresses the whole file
+- Comma-separated code lists and the `*` wildcard are supported.
+
+#### Distribution
+
+- Published to <https://crates.io/crates/rastray> —
+  `cargo install rastray --locked`.
+- Prebuilt binaries for `x86_64-unknown-linux-gnu`,
+  `x86_64-apple-darwin`, `aarch64-apple-darwin`, and
+  `x86_64-pc-windows-msvc` attached to every release with SHA-256
+  sidecars.
+- Shell installers (`install.sh`, `install.ps1`) that download,
+  verify, and extract the right archive for the host platform.
+
+#### Examples
+
+- [`examples/github-actions/`](examples/github-actions/) — drop-in
+  workflow with inline annotations, SARIF upload, and an explicit
+  severity gate.
+- [`examples/config/`](examples/config/) — four sample
+  `.rastray.toml` files (`minimal`, `advisory`, `strict`,
+  `monorepo`).
 
 ### Security
 
-- Removed transitive OpenSSL dependency tree.
-- Resolved RustSec advisory `RUSTSEC-2025-0023` (tokio broadcast soundness) by pinning `tokio >= 1.47`.
+- No `unsafe`, `unwrap`, `expect`, or `panic!` in production paths.
+- TLS via `rustls` only; no OpenSSL surface area.
+- Minimal default features on `tokio` and `reqwest`.
+- Hardened release profile: `lto = "thin"`, `codegen-units = 1`,
+  `strip = "symbols"`, `panic = "abort"`.
+- Resolved RustSec advisory `RUSTSEC-2025-0023` (tokio broadcast
+  soundness) by pinning `tokio >= 1.47`.
+
+### Compatibility
+
+- MSRV: Rust **1.86.0**.
+- The JSON output is considered stable within a minor version. Schema
+  additions will be called out in this changelog.
 
 [Unreleased]: https://github.com/balangyaoejuspher/rastray/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/balangyaoejuspher/rastray/releases/tag/v0.1.0
