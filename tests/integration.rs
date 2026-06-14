@@ -324,3 +324,79 @@ fn rastray_format_markdown_produces_pr_ready_output() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn rastray_format_html_writes_self_contained_report() {
+    let dir = match make_fixture("format-html") {
+        Some(d) => d,
+        None => return,
+    };
+    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let out_path = dir.join("report.html");
+    let status = match Command::new(&bin)
+        .arg(&dir)
+        .arg("--format")
+        .arg("html")
+        .arg("-o")
+        .arg(&out_path)
+        .arg("--min-severity")
+        .arg("info")
+        .status()
+    {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+
+    let html = fs::read_to_string(&out_path).unwrap_or_default();
+    let _ = fs::remove_dir_all(&dir);
+
+    let _ = status;
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("<title>rastray scan"));
+    assert!(html.contains("id=\"findings-table\""));
+    assert!(html.contains("RSTR-SEC-001"));
+    assert!(!html.contains("AKIAIOSFODNN7EXAMPLE\nconst"));
+}
+
+#[test]
+fn rastray_format_html_errors_without_output_path() {
+    let dir = match make_fixture("format-html-no-out") {
+        Some(d) => d,
+        None => return,
+    };
+    write_file(&dir, "main.rs", "fn main() {}");
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let output = match Command::new(&bin)
+        .arg(&dir)
+        .arg("--format")
+        .arg("html")
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let _ = fs::remove_dir_all(&dir);
+    assert!(!output.status.success(), "expected non-zero exit");
+    assert!(
+        stderr.contains("html") && stderr.contains("-o"),
+        "stderr should mention html + -o; got: {stderr}"
+    );
+}
