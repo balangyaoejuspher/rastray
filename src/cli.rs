@@ -47,6 +47,7 @@ pub enum OutputFormat {
     Json,
     GhActions,
     Sarif,
+    Markdown,
     Cyclonedx,
     SpdxJson,
 }

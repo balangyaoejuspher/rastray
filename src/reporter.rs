@@ -167,6 +167,7 @@ impl Report {
             OutputFormat::Human => render_human(self),
             OutputFormat::GhActions => render_gh_actions(self),
             OutputFormat::Sarif => render_sarif(self, output_path),
+            OutputFormat::Markdown => render_markdown(self, output_path),
             OutputFormat::Cyclonedx | OutputFormat::SpdxJson => Ok(()),
         }
     }
@@ -347,6 +348,119 @@ fn escape_gh_data(value: &str) -> String {
         .replace('%', "%25")
         .replace('\r', "%0D")
         .replace('\n', "%0A")
+}
+
+const MARKDOWN_PER_BUCKET: [(Severity, usize); 5] = [
+    (Severity::Critical, usize::MAX),
+    (Severity::High, 10),
+    (Severity::Medium, 5),
+    (Severity::Low, 5),
+    (Severity::Info, 0),
+];
+
+fn render_markdown(report: &Report, output_path: Option<&Path>) -> Result<(), ReporterError> {
+    let payload = markdown_document(report);
+    write_or_print(&payload, output_path)
+}
+
+fn markdown_document(report: &Report) -> String {
+    let mut out = String::new();
+    let total_secs = report.perf.total_ms as f64 / 1000.0;
+    out.push_str(&format!(
+        "## rastray scan — {} findings across {} files in {:.2}s\n\n",
+        report.findings.len(),
+        report.stats.files_scanned,
+        total_secs
+    ));
+
+    out.push_str("### Severity\n\n");
+    out.push_str("| Severity | Count |\n|---|---:|\n");
+    let sev_counts = severity_counts(report);
+    let sev_labels = ["Critical", "High", "Medium", "Low", "Info"];
+    for (label, count) in sev_labels.iter().zip(sev_counts.iter()) {
+        out.push_str(&format!("| {label} | {count} |\n"));
+    }
+    out.push('\n');
+
+    out.push_str("### Category\n\n");
+    out.push_str("| Category | Count |\n|---|---:|\n");
+    for (label, count) in category_counts(report) {
+        out.push_str(&format!("| {label} | {count} |\n"));
+    }
+    out.push('\n');
+
+    if !report.findings.is_empty() {
+        out.push_str("### Findings\n\n");
+        let mut shown_total = 0usize;
+        for (severity, cap) in MARKDOWN_PER_BUCKET {
+            if cap == 0 {
+                continue;
+            }
+            let bucket: Vec<&Finding> = report
+                .findings
+                .iter()
+                .filter(|f| f.severity == severity)
+                .collect();
+            if bucket.is_empty() {
+                continue;
+            }
+            let take = bucket.len().min(cap);
+            shown_total += take;
+            out.push_str(&format!(
+                "<details open><summary><strong>{}</strong> — showing {} of {}</summary>\n\n",
+                severity.as_str().to_ascii_uppercase(),
+                take,
+                bucket.len()
+            ));
+            out.push_str("| Code | Location | Message |\n|---|---|---|\n");
+            for finding in bucket.iter().take(take) {
+                let loc = format_markdown_location(finding);
+                let msg = escape_markdown_cell(&finding.message);
+                out.push_str(&format!("| `{}` | {} | {} |\n", finding.code, loc, msg));
+            }
+            if bucket.len() > take {
+                out.push_str(&format!(
+                    "\n_{} more {} finding(s) omitted. Use `--format json` for the full list._\n",
+                    bucket.len() - take,
+                    severity.as_str()
+                ));
+            }
+            out.push_str("\n</details>\n\n");
+        }
+        if shown_total < report.findings.len() {
+            out.push_str(&format!(
+                "_Showing {} of {} findings. Use `--format json` for the full list._\n",
+                shown_total,
+                report.findings.len()
+            ));
+        }
+    } else {
+        out.push_str("No findings. ✓\n");
+    }
+
+    out
+}
+
+fn format_markdown_location(finding: &Finding) -> String {
+    match &finding.location {
+        Some(loc) => {
+            let file = loc.file.display().to_string();
+            let file = file.trim_start_matches(r"\\?\");
+            match (loc.line, loc.column) {
+                (Some(line), Some(col)) => format!("`{file}:{line}:{col}`"),
+                (Some(line), None) => format!("`{file}:{line}`"),
+                _ => format!("`{file}`"),
+            }
+        }
+        None => "—".to_string(),
+    }
+}
+
+fn escape_markdown_cell(value: &str) -> String {
+    value
+        .replace('\\', r"\\")
+        .replace('|', r"\|")
+        .replace(['\r', '\n'], " ")
 }
 
 fn render_human(report: &Report) -> Result<(), ReporterError> {
@@ -850,6 +964,106 @@ mod tests {
         let doc = sarif_document(&report);
         let r = &doc["runs"][0]["results"][0];
         assert!(r["locations"].is_null());
+    }
+
+    fn finding_with_message(severity: Severity, message: &str, file: &str, line: usize) -> Finding {
+        Finding::new("RSTR-TST-100", message, severity, Category::Security)
+            .with_location(Location::file(file).with_line(line, 1))
+    }
+
+    #[test]
+    fn markdown_document_includes_header_and_tables() {
+        let mut report = Report::new();
+        report.stats.files_scanned = 12;
+        report.perf.total_ms = 250;
+        report.push(finding_with_message(
+            Severity::High,
+            "hardcoded token",
+            "src/a.rs",
+            10,
+        ));
+        let md = markdown_document(&report);
+        assert!(md.starts_with("## rastray scan — 1 findings across 12 files in 0.25s"));
+        assert!(md.contains("### Severity"));
+        assert!(md.contains("| High | 1 |"));
+        assert!(md.contains("### Category"));
+        assert!(md.contains("| Security | 1 |"));
+        assert!(md.contains("### Findings"));
+        assert!(md.contains("`RSTR-TST-100`"));
+        assert!(md.contains("hardcoded token"));
+        assert!(md.contains("src/a.rs:10:1"));
+    }
+
+    #[test]
+    fn markdown_document_reports_empty_findings_cleanly() {
+        let report = Report::new();
+        let md = markdown_document(&report);
+        assert!(md.contains("0 findings"));
+        assert!(md.contains("No findings. ✓"));
+        assert!(!md.contains("### Findings\n\n<details"));
+    }
+
+    #[test]
+    fn markdown_document_caps_high_at_ten_and_notes_omission() {
+        let mut report = Report::new();
+        for i in 0..15 {
+            report.push(finding_with_message(
+                Severity::High,
+                &format!("issue {i}"),
+                "src/a.rs",
+                i + 1,
+            ));
+        }
+        let md = markdown_document(&report);
+        assert!(md.contains("<strong>HIGH</strong> — showing 10 of 15"));
+        assert!(md.contains("5 more high finding(s) omitted"));
+        assert!(md.contains("Showing 10 of 15 findings"));
+    }
+
+    #[test]
+    fn markdown_document_shows_all_critical_without_cap() {
+        let mut report = Report::new();
+        for i in 0..50 {
+            report.push(finding_with_message(
+                Severity::Critical,
+                &format!("crit {i}"),
+                "src/a.rs",
+                i + 1,
+            ));
+        }
+        let md = markdown_document(&report);
+        assert!(md.contains("<strong>CRITICAL</strong> — showing 50 of 50"));
+        assert!(!md.contains("more critical finding(s) omitted"));
+    }
+
+    #[test]
+    fn markdown_document_skips_info_bucket_entirely() {
+        let mut report = Report::new();
+        report.push(finding_with_message(
+            Severity::Info,
+            "informational note",
+            "src/a.rs",
+            1,
+        ));
+        let md = markdown_document(&report);
+        assert!(!md.contains("informational note"));
+        assert!(md.contains("Showing 0 of 1 findings"));
+    }
+
+    #[test]
+    fn escape_markdown_cell_escapes_pipes_and_collapses_newlines() {
+        assert_eq!(escape_markdown_cell("a | b"), r"a \| b");
+        assert_eq!(escape_markdown_cell("line1\nline2"), "line1 line2");
+        assert_eq!(escape_markdown_cell("line1\r\nline2"), "line1  line2");
+        assert_eq!(escape_markdown_cell(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn format_markdown_location_strips_windows_extended_prefix() {
+        let f = finding_with_message(Severity::High, "x", r"\\?\C:\proj\src\a.rs", 5);
+        let s = format_markdown_location(&f);
+        assert!(s.contains("C:\\proj\\src\\a.rs:5:1"));
+        assert!(!s.contains(r"\\?\"));
     }
 }
 
