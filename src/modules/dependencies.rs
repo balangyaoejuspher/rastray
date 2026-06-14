@@ -14,6 +14,7 @@ use super::{Analyzer, AnalyzerError};
 
 const OSV_BATCH_URL: &str = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN_URL: &str = "https://api.osv.dev/v1/vulns/";
+const OSV_BATCH_LIMIT: usize = 1000;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const USER_AGENT: &str = concat!("rastray/", env!("CARGO_PKG_VERSION"));
 const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
@@ -53,6 +54,22 @@ impl Analyzer for DependenciesAnalyzer {
 
         for lockfile in collect_npm_lockfiles(crawl) {
             if let Ok(pkgs) = read_npm_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_pnpm_lockfiles(crawl) {
+            if let Ok(pkgs) = read_pnpm_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
+        for lockfile in collect_yarn_lockfiles(crawl) {
+            if let Ok(pkgs) = read_yarn_lock(&lockfile) {
                 for pkg in pkgs {
                     packages.push((lockfile.clone(), pkg));
                 }
@@ -159,6 +176,14 @@ fn collect_cargo_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_npm_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "package-lock.json")
+}
+
+fn collect_pnpm_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "pnpm-lock.yaml")
+}
+
+fn collect_yarn_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "yarn.lock")
 }
 
 fn collect_python_requirements(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -298,6 +323,155 @@ fn derive_npm_name(key: &str) -> Option<String> {
         return None;
     }
     Some(last.to_string())
+}
+
+fn read_pnpm_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut packages = Vec::new();
+    let mut in_packages_section = false;
+    let mut seen = std::collections::BTreeSet::new();
+
+    for raw_line in contents.lines() {
+        if raw_line.is_empty() {
+            continue;
+        }
+        if !raw_line.starts_with(char::is_whitespace) {
+            in_packages_section = raw_line.starts_with("packages:");
+            continue;
+        }
+
+        if !in_packages_section {
+            continue;
+        }
+
+        if let Some(spec) = pnpm_packages_key(raw_line) {
+            if let Some((name, version)) = split_npm_spec(spec) {
+                let key = format!("{name}@{version}");
+                if seen.insert(key) {
+                    packages.push(Package {
+                        ecosystem: "npm",
+                        name: name.to_string(),
+                        version: version.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(packages)
+}
+
+fn pnpm_packages_key(line: &str) -> Option<&str> {
+    let trimmed_start = line.trim_start();
+    let indent = line.len() - trimmed_start.len();
+    if indent != 2 {
+        return None;
+    }
+    let without_colon = trimmed_start.strip_suffix(':')?;
+    let unquoted = without_colon
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .or_else(|| {
+            without_colon
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+        })
+        .unwrap_or(without_colon);
+    let key = unquoted.strip_prefix('/').unwrap_or(unquoted);
+    if key.contains('@') {
+        Some(key)
+    } else {
+        None
+    }
+}
+
+fn split_npm_spec(spec: &str) -> Option<(&str, &str)> {
+    let cleaned = spec.split(['(', '_']).next().unwrap_or(spec);
+    let at = cleaned.rfind('@')?;
+    if at == 0 {
+        return None;
+    }
+    let name = &cleaned[..at];
+    let version = &cleaned[at + 1..];
+    if name.is_empty() || version.is_empty() {
+        return None;
+    }
+    if !version
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some((name, version))
+}
+
+fn read_yarn_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let mut packages = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut current_name: Option<String> = None;
+
+    for raw_line in contents.lines() {
+        if raw_line.starts_with('#') || raw_line.starts_with("__metadata") {
+            continue;
+        }
+        if !raw_line.starts_with(char::is_whitespace) && raw_line.trim_end().ends_with(':') {
+            current_name = parse_yarn_header(raw_line);
+            continue;
+        }
+        let trimmed = raw_line.trim();
+        if let Some(version) = parse_yarn_version_line(trimmed) {
+            if let Some(name) = current_name.as_deref() {
+                let key = format!("{name}@{version}");
+                if seen.insert(key) {
+                    packages.push(Package {
+                        ecosystem: "npm",
+                        name: name.to_string(),
+                        version: version.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(packages)
+}
+
+fn parse_yarn_header(line: &str) -> Option<String> {
+    let header = line.trim_end_matches(':').trim();
+    let first = header.split(',').next()?.trim();
+    let unquoted = first
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(first);
+    let stripped = unquoted
+        .strip_prefix("npm:")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| unquoted.to_string());
+    let at = stripped.rfind('@')?;
+    if at == 0 {
+        return None;
+    }
+    let name = &stripped[..at];
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn parse_yarn_version_line(trimmed: &str) -> Option<String> {
+    let rest = trimmed.strip_prefix("version")?;
+    let after = rest.trim_start_matches([' ', ':']).trim();
+    let unquoted = after
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(after);
+    if unquoted.is_empty() {
+        None
+    } else {
+        Some(unquoted.to_string())
+    }
 }
 
 fn read_python_requirements(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -465,46 +639,49 @@ struct OsvDatabaseSpecific {
 }
 
 async fn query_osv_batch(packages: &[&Package]) -> Result<Vec<Vec<OsvVuln>>, reqwest::Error> {
-    let queries: Vec<OsvQuery> = packages
-        .iter()
-        .map(|p| OsvQuery {
-            package: OsvPackage {
-                ecosystem: p.ecosystem,
-                name: &p.name,
-            },
-            version: &p.version,
-        })
-        .collect();
-
-    let body = OsvBatchRequest { queries };
-
     let client = reqwest::Client::builder()
         .timeout(HTTP_TIMEOUT)
         .user_agent(USER_AGENT)
         .build()?;
 
-    let resp: OsvBatchResponse = client
-        .post(OSV_BATCH_URL)
-        .json(&body)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let mut hydrated: Vec<Vec<OsvVuln>> = Vec::with_capacity(packages.len());
 
-    let mut hydrated = Vec::with_capacity(resp.results.len());
-    for result in resp.results {
-        let mut vulns = Vec::with_capacity(result.vulns.len());
-        for vuln_ref in result.vulns {
-            match fetch_vuln(&client, &vuln_ref.id).await {
-                Ok(v) => vulns.push(v),
-                Err(_) => vulns.push(OsvVuln {
-                    id: vuln_ref.id,
-                    ..OsvVuln::default()
-                }),
+    for chunk in packages.chunks(OSV_BATCH_LIMIT) {
+        let queries: Vec<OsvQuery> = chunk
+            .iter()
+            .map(|p| OsvQuery {
+                package: OsvPackage {
+                    ecosystem: p.ecosystem,
+                    name: &p.name,
+                },
+                version: &p.version,
+            })
+            .collect();
+
+        let body = OsvBatchRequest { queries };
+
+        let resp: OsvBatchResponse = client
+            .post(OSV_BATCH_URL)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        for result in resp.results {
+            let mut vulns = Vec::with_capacity(result.vulns.len());
+            for vuln_ref in result.vulns {
+                match fetch_vuln(&client, &vuln_ref.id).await {
+                    Ok(v) => vulns.push(v),
+                    Err(_) => vulns.push(OsvVuln {
+                        id: vuln_ref.id,
+                        ..OsvVuln::default()
+                    }),
+                }
             }
+            hydrated.push(vulns);
         }
-        hydrated.push(vulns);
     }
 
     Ok(hydrated)
@@ -918,6 +1095,224 @@ mod tests {
             Some("bar".to_string())
         );
         assert_eq!(derive_npm_name(""), None);
+    }
+
+    #[test]
+    fn split_npm_spec_parses_plain_and_scoped() {
+        assert_eq!(
+            split_npm_spec("lodash@4.17.21"),
+            Some(("lodash", "4.17.21"))
+        );
+        assert_eq!(
+            split_npm_spec("@types/node@20.0.0"),
+            Some(("@types/node", "20.0.0"))
+        );
+    }
+
+    #[test]
+    fn split_npm_spec_strips_pnpm_peer_suffix() {
+        assert_eq!(
+            split_npm_spec("react@18.0.0(react-dom@18.0.0)"),
+            Some(("react", "18.0.0"))
+        );
+        assert_eq!(
+            split_npm_spec("babel-jest@29.7.0_@babel+core@7.0.0"),
+            Some(("babel-jest", "29.7.0"))
+        );
+    }
+
+    #[test]
+    fn split_npm_spec_rejects_invalid_inputs() {
+        assert_eq!(split_npm_spec("@scope/pkg"), None);
+        assert_eq!(split_npm_spec("pkg@latest"), None);
+        assert_eq!(split_npm_spec("@scope"), None);
+    }
+
+    #[test]
+    fn pnpm_packages_key_extracts_v6_style_slash_prefix() {
+        assert_eq!(
+            pnpm_packages_key("  /lodash@4.17.21:"),
+            Some("lodash@4.17.21")
+        );
+        assert_eq!(
+            pnpm_packages_key("  '/@types/node@20.0.0':"),
+            Some("@types/node@20.0.0")
+        );
+    }
+
+    #[test]
+    fn pnpm_packages_key_extracts_v9_style_no_prefix() {
+        assert_eq!(pnpm_packages_key("  react@18.0.0:"), Some("react@18.0.0"));
+    }
+
+    #[test]
+    fn pnpm_packages_key_ignores_non_two_space_indent() {
+        assert_eq!(pnpm_packages_key("    resolution:"), None);
+        assert_eq!(pnpm_packages_key("lodash@4.17.21:"), None);
+    }
+
+    #[test]
+    fn read_pnpm_lock_parses_minimal_v9_lockfile() {
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-pnpm-test-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("pnpm-lock.yaml");
+        let body = "lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n\nimporters:\n  .:\n    dependencies:\n      lodash:\n        specifier: ^4.17.21\n        version: 4.17.21\n\npackages:\n\n  lodash@4.17.21:\n    resolution: {integrity: sha512-abc}\n\n  '@types/node@20.0.0':\n    resolution: {integrity: sha512-def}\n\nsnapshots:\n\n  lodash@4.17.21: {}\n";
+        if std::fs::write(&path, body).is_err() {
+            return;
+        }
+        let pkgs = match read_pnpm_lock(&path) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "lodash" && p.version == "4.17.21" && p.ecosystem == "npm"));
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "@types/node" && p.version == "20.0.0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_pnpm_lock_dedupes_repeated_packages() {
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-pnpm-dedupe-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("pnpm-lock.yaml");
+        let body = "packages:\n\n  lodash@4.17.21:\n    resolution: {integrity: a}\n\n  lodash@4.17.21:\n    resolution: {integrity: b}\n";
+        if std::fs::write(&path, body).is_err() {
+            return;
+        }
+        let pkgs = match read_pnpm_lock(&path) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_yarn_header_extracts_name_from_single_spec() {
+        assert_eq!(
+            parse_yarn_header("\"lodash@^4.17.0\":"),
+            Some("lodash".to_string())
+        );
+        assert_eq!(
+            parse_yarn_header("lodash@^4.17.0:"),
+            Some("lodash".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_yarn_header_extracts_name_from_compound_spec() {
+        assert_eq!(
+            parse_yarn_header("\"lodash@^4.17.0\", \"lodash@~4.17.5\":"),
+            Some("lodash".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_yarn_header_handles_scoped_packages() {
+        assert_eq!(
+            parse_yarn_header("\"@types/node@^20.0.0\":"),
+            Some("@types/node".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_yarn_header_strips_yarn_berry_npm_protocol() {
+        assert_eq!(
+            parse_yarn_header("\"lodash@npm:^4.17.0\":"),
+            Some("lodash".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_yarn_version_line_handles_quoted_and_unquoted() {
+        assert_eq!(
+            parse_yarn_version_line("version \"4.17.21\""),
+            Some("4.17.21".to_string())
+        );
+        assert_eq!(
+            parse_yarn_version_line("version: 4.17.21"),
+            Some("4.17.21".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_yarn_version_line_rejects_other_keys() {
+        assert_eq!(parse_yarn_version_line("resolved \"https://...\""), None);
+        assert_eq!(parse_yarn_version_line("integrity sha512-..."), None);
+    }
+
+    #[test]
+    fn read_yarn_lock_parses_v1_classic_format() {
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-yarn-test-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("yarn.lock");
+        let body = "# THIS IS AN AUTOGENERATED FILE.\n# yarn lockfile v1\n\n\n\"lodash@^4.17.0\", \"lodash@~4.17.21\":\n  version \"4.17.21\"\n  resolved \"https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz\"\n  integrity sha512-abc\n\n\"@types/node@^20.0.0\":\n  version \"20.5.0\"\n  resolved \"https://registry.yarnpkg.com/@types/node/-/node-20.5.0.tgz\"\n  integrity sha512-def\n";
+        if std::fs::write(&path, body).is_err() {
+            return;
+        }
+        let pkgs = match read_yarn_lock(&path) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "lodash" && p.version == "4.17.21"));
+        assert!(pkgs
+            .iter()
+            .any(|p| p.name == "@types/node" && p.version == "20.5.0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_yarn_lock_parses_berry_v2_format() {
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-yarn-berry-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join("yarn.lock");
+        let body = "__metadata:\n  version: 6\n\n\"lodash@npm:^4.17.0\":\n  version: 4.17.21\n  resolution: \"lodash@npm:4.17.21\"\n  checksum: abc\n  languageName: node\n  linkType: hard\n";
+        if std::fs::write(&path, body).is_err() {
+            return;
+        }
+        let pkgs = match read_yarn_lock(&path) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "lodash");
+        assert_eq!(pkgs[0].version, "4.17.21");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
