@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **PHP lockfile support** for `composer.lock` (Composer). Adds
+  CVE scanning against the OSV `Packagist` ecosystem and emits
+  `pkg:composer/<vendor>/<name>@<version>` purls. Both the
+  `packages` and `packages-dev` sections are walked. Leading `v`
+  prefixes on Composer versions are stripped to match OSV's
+  canonical form.
 - **Ruby lockfile support** for `Gemfile.lock` (Bundler). Adds
   CVE scanning against the OSV `RubyGems` ecosystem and emits
   `pkg:gem/...` purls in CycloneDX and SPDX SBOMs. Only top-level

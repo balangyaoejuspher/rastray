@@ -116,6 +116,14 @@ impl Analyzer for DependenciesAnalyzer {
             }
         }
 
+        for lockfile in collect_composer_lockfiles(crawl) {
+            if let Ok(pkgs) = read_composer_lock(&lockfile) {
+                for pkg in pkgs {
+                    packages.push((lockfile.clone(), pkg));
+                }
+            }
+        }
+
         for lockfile in collect_go_sum_files(crawl) {
             if let Ok(pkgs) = read_go_sum(&lockfile) {
                 for pkg in pkgs {
@@ -269,6 +277,11 @@ pub fn collect_packages(crawl: &CrawlSummary) -> Vec<DiscoveredPackage> {
             push(&lockfile, pkgs);
         }
     }
+    for lockfile in collect_composer_lockfiles(crawl) {
+        if let Ok(pkgs) = read_composer_lock(&lockfile) {
+            push(&lockfile, pkgs);
+        }
+    }
     for lockfile in collect_go_sum_files(crawl) {
         if let Ok(pkgs) = read_go_sum(&lockfile) {
             push(&lockfile, pkgs);
@@ -319,6 +332,10 @@ fn collect_uv_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
 
 fn collect_gemfile_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
     collect_manifests_named(crawl, "gemfile.lock")
+}
+
+fn collect_composer_lockfiles(crawl: &CrawlSummary) -> Vec<PathBuf> {
+    collect_manifests_named(crawl, "composer.lock")
 }
 
 fn collect_go_sum_files(crawl: &CrawlSummary) -> Vec<PathBuf> {
@@ -762,6 +779,40 @@ fn parse_gemfile_spec_line(line: &str) -> Option<Package> {
         name: name.to_string(),
         version: version.to_string(),
     })
+}
+
+fn read_composer_lock(path: &Path) -> Result<Vec<Package>, ParseError> {
+    let contents = fs::read_to_string(path).map_err(ParseError::Io)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&contents).map_err(|e| ParseError::Json(e.to_string()))?;
+    let mut out = Vec::new();
+    for section in ["packages", "packages-dev"] {
+        let Some(arr) = value.get(section).and_then(|s| s.as_array()) else {
+            continue;
+        };
+        for entry in arr {
+            let name = entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            let version_raw = entry
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            let version = version_raw.strip_prefix('v').unwrap_or(version_raw);
+            if name.is_empty() || version.is_empty() {
+                continue;
+            }
+            out.push(Package {
+                ecosystem: "Packagist",
+                name: name.to_string(),
+                version: version.to_string(),
+            });
+        }
+    }
+    Ok(out)
 }
 
 fn read_go_sum(path: &Path) -> Result<Vec<Package>, ParseError> {
@@ -1902,5 +1953,60 @@ mod tests {
         assert!(parse_gemfile_spec_line("not a spec line").is_none());
         assert!(parse_gemfile_spec_line(" (1.0.0)").is_none());
         assert!(parse_gemfile_spec_line("name ()").is_none());
+    }
+
+    #[test]
+    fn read_composer_lock_extracts_packages_and_packages_dev() {
+        let body = r#"{
+  "_readme": ["..."],
+  "content-hash": "abc",
+  "packages": [
+    {"name": "monolog/monolog", "version": "2.9.1"},
+    {"name": "symfony/console", "version": "v6.4.3"}
+  ],
+  "packages-dev": [
+    {"name": "phpunit/phpunit", "version": "10.5.0"}
+  ]
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-composer-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_composer_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 3);
+        for p in &pkgs {
+            assert_eq!(p.ecosystem, "Packagist");
+            assert!(!p.version.starts_with('v'));
+        }
+        let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"monolog/monolog"));
+        assert!(names.contains(&"symfony/console"));
+        assert!(names.contains(&"phpunit/phpunit"));
+    }
+
+    #[test]
+    fn read_composer_lock_skips_entries_without_name_or_version() {
+        let body = r#"{
+  "packages": [
+    {"name": "ok/pkg", "version": "1.0.0"},
+    {"version": "no-name"},
+    {"name": "no-version"}
+  ]
+}"#;
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-test-composer-skip-{}", std::process::id()));
+        let _ = std::fs::write(&tmp, body);
+        let parsed = read_composer_lock(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let pkgs = match parsed {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "ok/pkg");
     }
 }
