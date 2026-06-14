@@ -51,20 +51,36 @@ Release and verify the archive before extraction. The Unix script uses
 ### Cryptographic signatures (cosign)
 
 Starting with v0.1.1, every release archive ships with a matching
-`.cosign.bundle` file containing a [Sigstore](https://www.sigstore.dev/)
-keyless signature tied to the GitHub Actions workflow that built it.
-Verify with [`cosign`](https://github.com/sigstore/cosign):
+[Sigstore](https://www.sigstore.dev/) keyless signature tied to the
+GitHub Actions workflow that built it. Starting with v0.1.3, the same
+archives also ship with [SLSA](https://slsa.dev/) build-provenance
+attestations.
+
+#### Sigstore cosign
+
+Each archive has `.sig` + `.crt` and `.cosign.bundle` sidecars. Verify
+with [`cosign`](https://github.com/sigstore/cosign):
 
 ```sh
 cosign verify-blob \
-  --bundle rastray-v0.1.1-x86_64-unknown-linux-gnu.tar.gz.cosign.bundle \
-  --certificate-identity "https://github.com/balangyaoejuspher/rastray/.github/workflows/release.yml@refs/tags/v0.1.1" \
+  --bundle rastray-v0.1.3-x86_64-unknown-linux-gnu.tar.gz.cosign.bundle \
+  --certificate-identity "https://github.com/balangyaoejuspher/rastray/.github/workflows/release.yml@refs/tags/v0.1.3" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  rastray-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+  rastray-v0.1.3-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-A successful verification confirms the archive was built by this
-repository's tagged release workflow and has not been tampered with.
+#### SLSA build provenance
+
+Verify with the GitHub CLI:
+
+```sh
+gh attestation verify \
+  rastray-v0.1.3-x86_64-unknown-linux-gnu.tar.gz \
+  --repo balangyaoejuspher/rastray
+```
+
+Either method confirms the archive was built by this repository's
+tagged release workflow and has not been tampered with.
 
 ### Offline fallback
 

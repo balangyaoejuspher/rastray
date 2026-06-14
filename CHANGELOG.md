@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Release archives now ship with **SLSA build-provenance attestations**
+  produced by `actions/attest-build-provenance`. Verify with
+  `gh attestation verify <archive> --repo balangyaoejuspher/rastray`.
+  Satisfies the OSSF Scorecard `Provenance` check.
+- Each archive's cosign keyless signature is now also emitted as
+  standalone `.sig` + `.crt` sidecars alongside the existing
+  `.cosign.bundle`. The `.sig` form is the file extension recognized by
+  the OSSF Scorecard `Signed-Releases` check.
+
 ## [0.1.2] - 2026-06-14
 
 ### Added
