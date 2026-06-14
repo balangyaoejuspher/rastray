@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Swift lockfile support** for `Package.resolved` (SwiftPM).
+  Handles both the v1 schema (`object.pins`) and the current v2
+  schema (top-level `pins`). Package names are normalized to
+  `<host>/<owner>/<repo>` (lowercased, `https://` and `.git`
+  stripped, `git@host:` rewritten to `host/`) so purls follow the
+  `pkg:swift/github.com/apple/swift-syntax@<version>` shape
+  expected by the purl spec. Pins without a resolved version
+  (branch-only refs) are skipped. Feeds OSV `SwiftURL`.
 - **.NET lockfile support** for `packages.lock.json` (NuGet).
   Walks every target framework moniker (TFM) under the
   `dependencies` root and deduplicates packages shared across

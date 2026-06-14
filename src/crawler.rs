@@ -224,6 +224,7 @@ const MANIFEST_FILES: &[&str] = &[
     "pom.xml",
     "build.gradle",
     "build.gradle.kts",
+    "package.resolved",
 ];
 
 const SOURCE_EXTENSIONS: &[&str] = &[

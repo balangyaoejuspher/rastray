@@ -119,6 +119,7 @@ fn package_url(pkg: &DiscoveredPackage) -> String {
         "RubyGems" => "gem",
         "Packagist" => "composer",
         "NuGet" => "nuget",
+        "SwiftURL" => "swift",
         other => other,
     };
     format!("pkg:{typ}/{}@{}", pkg.name, pkg.version)
