@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-15
+
 ### Added
 
 - **Per-rule documentation site fully completed.** Every shipping
@@ -26,6 +28,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`RSTR-IAC-001, 002, 003, 005, 006`), and every performance rule
   (`RSTR-PERF-001, 002, 101, 102, 201, 202, 301, 302`). `SUMMARY.md`
   reorganised into 17 topic-aligned chapters.
+
+### Changed
+
+- README now characterises CodeQL accurately: it is free for
+  open-source projects (paid via GitHub Advanced Security only for
+  closed-source / commercial use). Semgrep is described as free OSS
+  with a paid Pro tier.
+
+### Dependencies
+
+- `toml` 0.8 → 1.1 (the 1.x release moved `from_str`, `from_slice`,
+  and `Deserializer` behind the `serde` feature; rastray's manifest
+  now opts in to the feature).
+- `tree-sitter-javascript` 0.23 → 0.25.
+- `tree-sitter-python` 0.23 → 0.25.
+- `tree-sitter-go` 0.23 → 0.25.
 
 ## [0.7.0] - 2026-06-15
 
