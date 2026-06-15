@@ -559,6 +559,31 @@ or `cargo install rastray --locked` first. The hooks deliberately do not
 build `rastray` from source on every contributor's machine — that would
 turn a one-second pre-commit check into a multi-minute Rust compile.
 
+### Git-history secret sweep
+
+For audit and incident-response cases ("did we ever commit a key?"),
+`rastray` can walk the full git commit history and run the secrets
+analyzer against every file blob that any commit ever added or
+modified:
+
+```sh
+rastray secrets --history             # walk the entire history
+rastray secrets --history --since v0.10.0
+rastray secrets --history --max-commits 500
+```
+
+The scanner shells out to `git log` / `git diff-tree` / `git show`,
+so it works on any repository where `git` is on `PATH` — no
+additional dependency. Findings render with a synthetic location
+like `path/to/file.env@abcdef1` so reviewers can `git show
+abcdef1:path/to/file.env` directly to inspect the historical blob.
+
+Findings honour the same `--min-severity` / `--min-confidence` /
+`--json` / `--format` flags as a working-tree scan. The exit code is
+`0` if zero secrets surfaced and `1` otherwise (no `--fail-on`
+threshold for the subcommand — any historical leak is treated as a
+finding worth flagging).
+
 ### Editor integration (LSP)
 
 `rastray` ships a built-in Language Server Protocol implementation so

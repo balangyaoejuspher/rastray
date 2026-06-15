@@ -219,6 +219,19 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Lsp,
+    Secrets {
+        #[arg(long = "history", default_value_t = false)]
+        history: bool,
+
+        #[arg(long = "since", value_name = "REF")]
+        since: Option<String>,
+
+        #[arg(long = "max-commits", value_name = "N")]
+        max_commits: Option<usize>,
+
+        #[arg(value_name = "PATH", default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 impl Cli {

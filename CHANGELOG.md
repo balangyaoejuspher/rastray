@@ -8,6 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Git-history secret sweep** via a new `rastray secrets --history`
+  subcommand. Walks every commit in the repository (optionally
+  filtered with `--since <ref>` or capped with `--max-commits N`),
+  enumerates each commit's added or modified files via
+  `git diff-tree`, and runs the secrets analyzer's pattern set
+  against every historical blob. Findings render with a synthetic
+  location like `path/to/file.env@abcdef1` so reviewers can
+  `git show abcdef1:path/to/file.env` directly to inspect the
+  historical blob.
+
+  The scanner shells out to `git` (the same approach `--since` /
+  `--changed-only` already use) — no new dependency added. The
+  secrets pattern set is reused verbatim via a new public
+  `scan_text_for_secrets(contents, synthetic_path)` helper on the
+  secrets analyzer.
+
+  Findings honour the same `--min-severity` / `--min-confidence` /
+  `--json` / `--format` flags as a working-tree scan. Exit code is
+  `0` for zero findings, `1` otherwise.
+
+  3 new unit tests cover the SHA truncation and synthetic-path
+  helpers; 1 new integration test spins up a tiny git repo, commits
+  an AWS key, `git rm`s it, commits again, and asserts the history
+  scan still flags the leaked blob.
+
 - **Per-finding `confidence` field** with three values (`low`,
   `medium`, `high`). Every existing rule defaults to `high` — there
   is no behaviour change for any current scan. New (typically
@@ -18,10 +43,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `low` / `medium` / `high`). Human-readable output appends
   `(confidence: med|low)` to the help line whenever the finding's
   confidence is below `high`, so reviewers can tell heuristic from
-  exact-match findings at a glance. JSON / SARIF / Markdown / HTML
-  output gain a `confidence` field for every finding. The LSP
-  preserves the default behaviour (`Confidence::Low` minimum, i.e.
-  show everything).
+  exact-match findings at a glance. JSON output gains a `confidence`
+  field on every finding (automatic via serde); SARIF results gain
+  a `properties.confidence` slot (where the SARIF spec permits open
+  extensions). The LSP preserves the default behaviour
+  (`Confidence::Low` minimum, i.e. show everything).
 
   Five new unit tests cover the filter and ordering semantics.
 
