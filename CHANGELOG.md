@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Per-rule documentation site fully completed.** Every shipping
+  rule code now has a dedicated page following the same template
+  (Summary, Severity, Languages, What rastray flags, What rastray
+  deliberately does *not* flag, How to fix, References). The site
+  grew from 21 pages to 93 — the docs now cover the full catalogue
+  including the secrets family (`RSTR-SEC-002..008`), the broken-crypto
+  variants (`RSTR-CRY-003..007`), the deserialization family
+  (`RSTR-DES-001..007`), the path-traversal family
+  (`RSTR-PTH-001..004`), the injection variants
+  (`RSTR-INJ-002..005`), JWT misuse cases (`RSTR-JWT-002, 003, 005`),
+  the SSRF/XSS/XXE/RDR/SSTI/NOSQLI variants in each language family,
+  the cookie/CORS/CSRF web-app cluster, the ORM mass-assignment
+  variants (`RSTR-ORM-002, 003`), `RSTR-LDAP-002`, the network
+  family (`RSTR-NET-002..004`), the GHA family
+  (`RSTR-GHA-001, 002, 003, 005`), the Docker / IaC family
+  (`RSTR-IAC-001, 002, 003, 005, 006`), and every performance rule
+  (`RSTR-PERF-001, 002, 101, 102, 201, 202, 301, 302`). `SUMMARY.md`
+  reorganised into 17 topic-aligned chapters.
+
 ## [0.7.0] - 2026-06-15
 
 ### Added
