@@ -584,6 +584,39 @@ Findings honour the same `--min-severity` / `--min-confidence` /
 threshold for the subcommand — any historical leak is treated as a
 finding worth flagging).
 
+### Container image scanning
+
+`rastray` can also scan container image archives on disk for the
+same set of secret patterns:
+
+```sh
+docker save my-app:1.0 -o my-app.tar
+rastray image my-app.tar
+```
+
+The scanner accepts a `docker save` tarball or an OCI image layout
+exported to a tarball. It walks every layer inside the archive,
+recursively unpacks nested `.tar` / `.tar.gz` / `.tgz` entries up
+to four levels deep, and runs the secrets analyzer against every
+text file inside. Binary files and files larger than
+`--max-file-bytes` (default 4 MiB) are skipped.
+
+Findings render with a synthetic location like
+`my-app.tar::sha256.../layer.tar::etc/leaked.env` so reviewers can
+tell exactly which layer the leak lives in.
+
+**Scope notes:**
+
+- This is **not** a CVE scanner for OS packages — it does not parse
+  `dpkg`/`rpm`/`apk` databases or query a vulnerability DB. For
+  full OS-package CVE coverage, run `trivy image` alongside; the
+  two tools cover non-overlapping concerns (rastray = secrets and
+  IaC misconfig baked into images, trivy = known-CVE OS / language
+  packages).
+- The scanner reads from disk only — no registry pulls, no docker
+  daemon required. Use `docker save` (or `skopeo copy
+  docker://image dir:./image`) to materialise the archive first.
+
 ### Editor integration (LSP)
 
 `rastray` ships a built-in Language Server Protocol implementation so

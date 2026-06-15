@@ -7,6 +7,7 @@ mod config;
 mod crawler;
 mod git_changes;
 mod history;
+mod image;
 mod lsp;
 mod modules;
 mod reporter;
@@ -65,6 +66,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::history))]
     History(#[from] history::HistoryScanError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::image))]
+    Image(#[from] image::ImageScanError),
 }
 
 mod exit {
@@ -113,6 +118,29 @@ fn main() -> ExitCode {
             since.clone(),
             *max_commits,
             path.clone(),
+            cli.effective_format(),
+            cli.output.clone(),
+            cli.min_severity,
+            cli.min_confidence,
+        ) {
+            Ok(c) => c,
+            Err(err) => {
+                let report: miette::Report = err.into();
+                eprintln!("{report:?}");
+                exit::RUNTIME_ERROR
+            }
+        };
+        return ExitCode::from(code);
+    }
+
+    if let Some(Command::Image {
+        max_file_bytes,
+        archive,
+    }) = &cli.command
+    {
+        let code = match run_image_subcommand(
+            archive.clone(),
+            *max_file_bytes,
             cli.effective_format(),
             cli.output.clone(),
             cli.min_severity,
@@ -360,6 +388,35 @@ fn run_secrets_subcommand(
         report.push(f);
     }
     report.stats.files_scanned = result.stats.blobs_scanned;
+
+    report.apply_min_severity(min_severity);
+    report.apply_min_confidence(min_confidence);
+
+    report.render(format, output.as_deref())?;
+
+    Ok(if report.findings.is_empty() {
+        exit::OK
+    } else {
+        exit::FINDINGS
+    })
+}
+
+fn run_image_subcommand(
+    archive: std::path::PathBuf,
+    max_file_bytes: u64,
+    format: OutputFormat,
+    output: Option<std::path::PathBuf>,
+    min_severity: Severity,
+    min_confidence: cli::Confidence,
+) -> Result<u8, AppError> {
+    let opts = image::ImageScanOptions { max_file_bytes };
+    let result = image::scan_image_archive(&archive, &opts)?;
+
+    let mut report = Report::new();
+    for f in result.findings {
+        report.push(f);
+    }
+    report.stats.files_scanned = result.stats.files_scanned;
 
     report.apply_min_severity(min_severity);
     report.apply_min_confidence(min_confidence);

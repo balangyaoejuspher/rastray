@@ -242,6 +242,99 @@ fn secrets_history_detects_blob_purged_from_working_tree() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn image_scan_detects_secret_in_layer_tarball() {
+    let dir = match make_fixture("image") {
+        Some(d) => d,
+        None => return,
+    };
+
+    let mut inner_tar: Vec<u8> = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut inner_tar);
+        let body = b"AWS_KEY=AKIAIOSFODNN7EXAMPLE\n";
+        let mut header = tar::Header::new_gnu();
+        if header.set_path("etc/leaked.env").is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        header.set_size(body.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        if builder.append(&header, body.as_slice()).is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        if builder.finish().is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    }
+
+    let outer = dir.join("image.tar");
+    let outer_file = match fs::File::create(&outer) {
+        Ok(f) => f,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    {
+        let mut builder = tar::Builder::new(outer_file);
+        let mut header = tar::Header::new_gnu();
+        if header.set_path("sha256abc/layer.tar").is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        header.set_size(inner_tar.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        if builder.append(&header, inner_tar.as_slice()).is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        if builder.finish().is_err() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    }
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let output = Command::new(&bin)
+        .arg("image")
+        .arg(&outer)
+        .arg("--json")
+        .arg("--min-severity")
+        .arg("info")
+        .output();
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = match serde_json::from_str(&stdout) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let aws_hits = count_findings_with_code(&json, "RSTR-SEC-001");
+    assert!(
+        aws_hits >= 1,
+        "expected RSTR-SEC-001 to fire on the secret baked into the image, got {aws_hits}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 fn run_exit_code(dir: &Path, extra_args: &[&str]) -> Option<i32> {
     let bin = binary_path();
     if !bin.exists() {

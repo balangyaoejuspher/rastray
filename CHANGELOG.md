@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Container image scanning** via a new `rastray image <archive>`
+  subcommand. Accepts a `docker save` tarball or an OCI image
+  layout exported to a tarball (no registry pull, no docker daemon
+  required). Walks every layer, recursively unpacks nested `.tar` /
+  `.tar.gz` / `.tgz` entries up to four levels deep, and runs the
+  secrets analyzer against every text file inside. Binary files
+  and files larger than `--max-file-bytes` (default 4 MiB) are
+  skipped. Findings render with a synthetic location like
+  `image.tar::sha256.../layer.tar::etc/leaked.env` so reviewers
+  can tell exactly which layer the leak lives in.
+
+  Two new dependencies: `tar = 0.4` and `flate2 = 1.0` (rust-only
+  backend, no `libz-sys`). The scanner reuses the same
+  `scan_text_for_secrets` helper introduced for git-history sweeps,
+  so the pattern set, entropy thresholds, and rule codes all
+  match a working-tree scan exactly.
+
+  Scope note: this is intentionally **not** a CVE scanner for OS
+  packages (no `dpkg`/`rpm`/`apk` database parsing, no
+  vulnerability DB). Run `trivy image` alongside for OS-package
+  CVE coverage — the two tools cover non-overlapping concerns.
+
+  4 new unit tests cover the inner-tar detection, binary-file
+  heuristic, and gzip pass-through. 1 new integration test
+  hand-builds a two-level nested tarball with an AWS key inside
+  and asserts the scan flags it.
+
 - **Git-history secret sweep** via a new `rastray secrets --history`
   subcommand. Walks every commit in the repository (optionally
   filtered with `--since <ref>` or capped with `--max-commits N`),

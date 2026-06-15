@@ -232,6 +232,13 @@ pub enum Command {
         #[arg(value_name = "PATH", default_value = ".")]
         path: PathBuf,
     },
+    Image {
+        #[arg(long = "max-file-bytes", value_name = "N", default_value_t = 4 * 1024 * 1024)]
+        max_file_bytes: u64,
+
+        #[arg(value_name = "ARCHIVE")]
+        archive: PathBuf,
+    },
 }
 
 impl Cli {
