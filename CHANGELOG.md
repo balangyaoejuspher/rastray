@@ -8,6 +8,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **JWT-misuse analyzer** (`RSTR-JWT-*`) — five new rule
+  codes catching the most common JSON-Web-Token bugs across
+  Node (`jsonwebtoken`), Python (`pyjwt`), and Go
+  (`github.com/golang-jwt/jwt`):
+  - `RSTR-JWT-001` (`Critical`) — accepts `alg: 'none'` or the
+    wildcard `algorithms: ['*']`. JS/TS + Python. Bypasses
+    signature verification entirely.
+  - `RSTR-JWT-002` (`Critical`) — skips signature verification
+    via `jwt.decode(token, { verify: false })` (JS),
+    `verify_signature: False` in `options` (Python), or
+    `verify=False` keyword (Python).
+  - `RSTR-JWT-003` (`High`) — hardcoded HMAC secret string
+    literal in `jwt.sign(...)` / `jwt.encode(...)`.
+  - `RSTR-JWT-004` (`High`) — `jwt.verify(token, secret)` /
+    `jwt.decode(token, key)` without an explicit
+    `algorithms` list — enables alg-confusion attacks
+    (forge an HS256 token using the RS256 public key).
+  - `RSTR-JWT-005` (`High`) — Go `jwt.Parse(t, func(...))`
+    whose keyfunc returns a secret without first checking
+    `token.Method.(*jwt.SigningMethodHMAC)`.
+
+  Same captured-call-site message convention as the rest of
+  the security-analyzer family. Help text per language
+  ships the hardened form: explicit `algorithms` list
+  (`['RS256']`), secret loaded from `process.env` /
+  `os.environ` / `os.Getenv`, and for Go the
+  `if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok`
+  guard inside the keyfunc.
+
+  Discriminator tests prove the safe forms are not flagged:
+  `algorithms: ['RS256']` explicit list,
+  `algorithms=['RS256']` in Python, and
+  `process.env.JWT_SECRET` instead of a literal.
+
 - **Web-app config analyzer** (`RSTR-COOKIE-*`, `RSTR-CORS-*`,
   `RSTR-CSRF-*`) — eight new rule codes catching the most
   common misconfiguration bugs in web stacks:
