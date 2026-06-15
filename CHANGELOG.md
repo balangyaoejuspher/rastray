@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Per-finding `confidence` field** with three values (`low`,
+  `medium`, `high`). Every existing rule defaults to `high` — there
+  is no behaviour change for any current scan. New (typically
+  heuristic) rules can opt into lower confidence via the
+  `Finding::with_confidence(...)` builder; those findings can then
+  be filtered out at the report boundary with the new
+  `--min-confidence <LEVEL>` CLI flag (default `low`, accepts
+  `low` / `medium` / `high`). Human-readable output appends
+  `(confidence: med|low)` to the help line whenever the finding's
+  confidence is below `high`, so reviewers can tell heuristic from
+  exact-match findings at a glance. JSON / SARIF / Markdown / HTML
+  output gain a `confidence` field for every finding. The LSP
+  preserves the default behaviour (`Confidence::Low` minimum, i.e.
+  show everything).
+
+  Five new unit tests cover the filter and ordering semantics.
+
 ## [0.12.0] - 2026-06-16
 
 ### Added

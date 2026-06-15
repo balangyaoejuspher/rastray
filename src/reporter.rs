@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 
-use crate::cli::{OutputFormat, Severity};
+use crate::cli::{Confidence, OutputFormat, Severity};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Location {
@@ -70,11 +70,18 @@ impl Serialize for Severity {
     }
 }
 
+impl Serialize for Confidence {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Finding {
     pub code: String,
     pub message: String,
     pub severity: Severity,
+    pub confidence: Confidence,
     pub category: Category,
     pub help: Option<String>,
     pub location: Option<Location>,
@@ -91,6 +98,7 @@ impl Finding {
             code: code.into(),
             message: message.into(),
             severity,
+            confidence: Confidence::High,
             category,
             help: None,
             location: None,
@@ -104,6 +112,11 @@ impl Finding {
 
     pub fn with_location(mut self, location: Location) -> Self {
         self.location = Some(location);
+        self
+    }
+
+    pub fn with_confidence(mut self, confidence: Confidence) -> Self {
+        self.confidence = confidence;
         self
     }
 }
@@ -155,6 +168,10 @@ impl Report {
 
     pub fn apply_min_severity(&mut self, min: Severity) {
         self.findings.retain(|f| f.severity >= min);
+    }
+
+    pub fn apply_min_confidence(&mut self, min: Confidence) {
+        self.findings.retain(|f| f.confidence >= min);
     }
 
     pub fn render(
@@ -270,6 +287,7 @@ fn sarif_result(f: &Finding) -> serde_json::Value {
         "ruleId": f.code,
         "level": sarif_level(f.severity),
         "message": { "text": f.message },
+        "properties": { "confidence": f.confidence.as_str() },
     });
 
     if let Some(loc) = &f.location {
@@ -1000,6 +1018,48 @@ mod tests {
     }
 
     #[test]
+    fn apply_min_confidence_drops_below_threshold() {
+        let mut report = Report::new();
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::Low));
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::Medium));
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::High));
+        report.apply_min_confidence(Confidence::Medium);
+        assert_eq!(report.findings.len(), 2);
+        assert!(report
+            .findings
+            .iter()
+            .all(|f| f.confidence >= Confidence::Medium));
+    }
+
+    #[test]
+    fn finding_default_confidence_is_high() {
+        let f = finding(Severity::High, Category::Security);
+        assert_eq!(f.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn finding_with_confidence_overrides_default() {
+        let f = finding(Severity::High, Category::Security).with_confidence(Confidence::Low);
+        assert_eq!(f.confidence, Confidence::Low);
+    }
+
+    #[test]
+    fn confidence_ordering_is_low_less_than_high() {
+        assert!(Confidence::Low < Confidence::Medium);
+        assert!(Confidence::Medium < Confidence::High);
+    }
+
+    #[test]
+    fn apply_min_confidence_default_low_keeps_everything() {
+        let mut report = Report::new();
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::Low));
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::Medium));
+        report.push(finding(Severity::High, Category::Secret).with_confidence(Confidence::High));
+        report.apply_min_confidence(Confidence::Low);
+        assert_eq!(report.findings.len(), 3);
+    }
+
+    #[test]
     fn has_at_or_above_recognises_threshold() {
         let mut report = Report::new();
         report.push(finding(Severity::Low, Category::Secret));
@@ -1386,12 +1446,19 @@ impl FindingDiagnostic {
             None => (None, None),
         };
 
+        let help = match (finding.help.clone(), finding.confidence) {
+            (Some(text), Confidence::High) => Some(text),
+            (Some(text), c) => Some(format!("{text} (confidence: {})", c.short_label())),
+            (None, Confidence::High) => None,
+            (None, c) => Some(format!("confidence: {}", c.short_label())),
+        };
+
         Ok(Self {
             code: finding.code.clone(),
             severity: finding.severity,
             category: finding.category,
             message: finding.message.clone(),
-            help: finding.help.clone(),
+            help,
             src,
             span,
         })

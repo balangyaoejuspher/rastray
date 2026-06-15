@@ -185,6 +185,7 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     }
 
     report.apply_min_severity(min_severity);
+    report.apply_min_confidence(cli.min_confidence);
 
     report.perf.walk_ms = walk_ms;
     report.perf.analyze_ms = analyze_ms;

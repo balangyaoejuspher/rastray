@@ -40,6 +40,46 @@ impl FromStr for Severity {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[value(rename_all = "lowercase")]
+pub enum Confidence {
+    Low,
+    Medium,
+    #[default]
+    High,
+}
+
+impl Confidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Confidence::Low => "low",
+            Confidence::Medium => "medium",
+            Confidence::High => "high",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Confidence::Low => "low",
+            Confidence::Medium => "med",
+            Confidence::High => "high",
+        }
+    }
+}
+
+impl FromStr for Confidence {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "low" => Ok(Confidence::Low),
+            "medium" | "med" => Ok(Confidence::Medium),
+            "high" => Ok(Confidence::High),
+            other => Err(format!("unknown confidence '{other}'")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 pub enum OutputFormat {
@@ -91,6 +131,9 @@ pub struct Cli {
 
     #[arg(long = "min-severity", value_enum, default_value_t = Severity::Low)]
     pub min_severity: Severity,
+
+    #[arg(long = "min-confidence", value_enum, default_value_t = Confidence::Low)]
+    pub min_confidence: Confidence,
 
     #[arg(long = "json", default_value_t = false)]
     pub json: bool,
