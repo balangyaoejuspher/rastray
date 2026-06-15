@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`rastray lsp` subcommand** — built-in Language Server
+  Protocol implementation over stdio so findings surface
+  inline in any LSP-aware editor (VS Code, Neovim, Helix,
+  Zed, Emacs) as you save a file. Each `textDocument/didOpen`
+  and `textDocument/didSave` triggers an in-process scan of
+  the single file through the existing analyzer registry,
+  then emits one `textDocument/publishDiagnostics`. Each
+  diagnostic carries the `RSTR-<FAMILY>-<NNN>` rule code,
+  the captured-call-site message, severity mapped to LSP
+  (`Critical`/`High` → Error, `Medium` → Warning, `Low` →
+  Information, `Info` → Hint), and the per-language
+  remediation help text in `relatedInformation`.
+
+  The LSP runs in offline mode (no OSV.dev calls), uses a
+  single worker thread, and only scans the file that just
+  opened or saved — not the whole workspace — keeping
+  latency under 100 ms on typical files. Wire-up snippets
+  for Neovim (`nvim-lspconfig`) and Helix (`languages.toml`)
+  are in the README under "Editor integration (LSP)".
+
+  Powered by `tower-lsp 0.20` over `tokio` stdio. The
+  existing `Analyzer` trait is reused verbatim — no
+  analyzer code paths changed.
+
 ## [0.4.0] - 2026-06-14
 
 ### Added

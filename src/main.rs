@@ -5,6 +5,7 @@ mod cli;
 mod config;
 mod crawler;
 mod git_changes;
+mod lsp;
 mod modules;
 mod reporter;
 mod sbom;
@@ -16,7 +17,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::baseline::{Baseline, BaselineError};
-use crate::cli::{Cli, FailOn, OutputFormat, Severity};
+use crate::cli::{Cli, Command, FailOn, OutputFormat, Severity};
 use crate::config::{Config, ConfigError};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::git_changes::{changed_files_since, resolve_reference, GitChangesError};
@@ -71,6 +72,21 @@ fn main() -> ExitCode {
     }));
 
     let cli = Cli::parsed();
+
+    if matches!(cli.command, Some(Command::Lsp)) {
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(err) => {
+                eprintln!("failed to start runtime for lsp: {err}");
+                return ExitCode::from(exit::RUNTIME_ERROR);
+            }
+        };
+        runtime.block_on(lsp::run_lsp_server());
+        return ExitCode::from(exit::OK);
+    }
 
     match run(cli) {
         Ok(code) => ExitCode::from(code),
