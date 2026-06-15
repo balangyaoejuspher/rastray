@@ -6,29 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-16
+
 ### Added
-
-- **Homebrew formula** at `dist/homebrew/rastray.rb` and **Scoop
-  manifest** at `dist/scoop/rastray.json`, both pinned to the
-  current release tag and downloading the same checksum-verified
-  release tarballs the shell installer uses. README "Installation"
-  section gains new Homebrew and Scoop sub-sections with direct-
-  install snippets that work today; dedicated tap / bucket repos
-  are queued as a follow-up. `dist/README.md` documents the layout
-  and the manual SHA-refresh procedure that the release PR runs.
-
-- **Docs Quickstart page** at `docs/src/quickstart.md` consolidating
-  install (installer, cargo, Windows ps1), smoke-test, pre-commit
-  integration, GitHub Actions integration, and editor (LSP) wiring
-  into one two-minute path. Linked from `SUMMARY.md` between the
-  Introduction and the "How to read these pages" guide.
-
-### Changed
-
-- README pre-commit example now pins `rev: v0.11.0` (was `v0.4.0`,
-  badly stale). Existing consumers using `pre-commit autoupdate`
-  were unaffected; consumers who copy-pasted the README snippet now
-  get a real existing tag on first install.
 
 - **Kubernetes and Terraform rule coverage** broadens the IaC analyzer
   from Dockerfile-only to three file types. Five new rules:
@@ -73,6 +53,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   reduction in coverage of source code. Every dropped finding is one
   rastray *would* have flagged before; the dropped ones are
   overwhelmingly intentional fixtures.
+
+- **Homebrew formula** at `dist/homebrew/rastray.rb` and **Scoop
+  manifest** at `dist/scoop/rastray.json`, both pinned to the
+  current release tag and downloading the same checksum-verified
+  release tarballs the shell installer uses. README "Installation"
+  section gains new Homebrew and Scoop sub-sections with direct-
+  install snippets that work today; dedicated tap / bucket repos
+  are queued as a follow-up. `dist/README.md` documents the layout
+  and the manual SHA-refresh procedure that the release PR runs.
+
+- **Docs Quickstart page** at `docs/src/quickstart.md` consolidating
+  install (installer, cargo, Windows ps1), smoke-test, pre-commit
+  integration, GitHub Actions integration, and editor (LSP) wiring
+  into one two-minute path. Linked from `SUMMARY.md` between the
+  Introduction and the "How to read these pages" guide.
+
+### Changed
+
+- README pre-commit example now pins `rev: v0.11.0` (was `v0.4.0`,
+  badly stale). Existing consumers using `pre-commit autoupdate`
+  were unaffected; consumers who copy-pasted the README snippet now
+  get a real existing tag on first install.
 
 ## [0.11.0] - 2026-06-16
 
