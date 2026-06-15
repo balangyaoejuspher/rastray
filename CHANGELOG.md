@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-06-15
+## [0.11.0] - 2026-06-16
 
 ### Added
 
@@ -34,8 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Seven new unit tests cover the patterns and their safe-form
   counter-examples. Five new docs pages follow the established
   template. The RailsGoat benchmark page is refreshed: rastray
-  findings on RailsGoat grew from 6 to 11 (almost 2x) — closes the
-  largest remaining catch-rate gap surfaced by v0.9.0 benchmarks.
+  findings on RailsGoat grew from 6 to 11 (almost 2x).
 
 ## [0.10.0] - 2026-06-15
 
