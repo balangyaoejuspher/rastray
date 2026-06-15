@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Kubernetes and Terraform rule coverage** broadens the IaC analyzer
+  from Dockerfile-only to three file types. Five new rules:
+  - `RSTR-IAC-007` (`High`) — Kubernetes container with
+    `securityContext.privileged: true`. Detected in any PodSpec-
+    bearing kind (`Pod`, `Deployment`, `StatefulSet`, `DaemonSet`,
+    `Job`, `CronJob`, `ReplicaSet`, `ReplicationController`).
+  - `RSTR-IAC-008` (`High`) — PodSpec sets `hostNetwork: true` /
+    `hostPID: true` / `hostIPC: true` (collapses the container/host
+    isolation boundary).
+  - `RSTR-IAC-009` (`High`) — Terraform `aws_s3_bucket` with
+    `acl = "public-read"` or `"public-read-write"`.
+  - `RSTR-IAC-010` (`Critical`) — Terraform security-group rule
+    with `cidr_blocks = ["0.0.0.0/0"]`.
+  - `RSTR-IAC-011` (`High`) — Terraform `aws_db_instance` /
+    `aws_rds_cluster_instance` with `publicly_accessible = true`.
+
+  Kubernetes manifests are detected by the combination of a `.yaml` /
+  `.yml` extension and a workload-bearing `kind:` near the top of the
+  file (Pod, Deployment, etc.) — plain ConfigMaps and unrelated YAML
+  files are not flagged. Terraform is detected by the `.tf` and
+  `.tfvars` extensions, both newly added to the crawler's config-file
+  list.
+
+  Eight new unit tests cover the new patterns and their safe-form
+  counter-examples. Five new docs pages follow the established
+  template.
+
 - **Built-in fixture-noise filter** for the two secret-scanning rules
   most prone to false positives on real codebases when intentional
   test fixtures hold sample PEM blocks or API-key snippets:

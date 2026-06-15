@@ -165,6 +165,11 @@
 - [RSTR-IAC-003 — ADD with remote URL](./rules/RSTR-IAC-003.md)
 - [RSTR-IAC-005 — chmod 777](./rules/RSTR-IAC-005.md)
 - [RSTR-IAC-006 — curl | sh](./rules/RSTR-IAC-006.md)
+- [RSTR-IAC-007 — privileged container](./rules/RSTR-IAC-007.md)
+- [RSTR-IAC-008 — host namespace shared](./rules/RSTR-IAC-008.md)
+- [RSTR-IAC-009 — public S3 bucket ACL](./rules/RSTR-IAC-009.md)
+- [RSTR-IAC-010 — open ingress cidr 0.0.0.0/0](./rules/RSTR-IAC-010.md)
+- [RSTR-IAC-011 — publicly accessible database](./rules/RSTR-IAC-011.md)
 
 # Performance — Rust
 

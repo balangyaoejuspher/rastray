@@ -24,17 +24,25 @@ impl Analyzer for IacAnalyzer {
     }
 
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
-        let patterns = compiled_patterns()?;
+        let docker_patterns = compiled_docker_patterns()?;
+        let k8s_patterns = compiled_k8s_patterns()?;
+        let tf_patterns = compiled_tf_patterns()?;
         let mut findings = Vec::new();
         for file in &crawl.files {
-            if !is_dockerfile(&file.path) {
-                continue;
-            }
             let contents = match fs::read_to_string(&file.path) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            for pattern in patterns {
+            let target_patterns: &[CompiledPattern] = if is_dockerfile(&file.path) {
+                docker_patterns
+            } else if is_terraform_file(&file.path) {
+                tf_patterns
+            } else if is_kubernetes_manifest(&file.path, &contents) {
+                k8s_patterns
+            } else {
+                continue;
+            };
+            for pattern in target_patterns {
                 for m in pattern.regex.find_iter(&contents) {
                     let (line, column) = byte_offset_to_line_col(&contents, m.start());
                     let location = Location::file(file.path.clone())
@@ -68,6 +76,40 @@ fn is_dockerfile(path: &std::path::Path) -> bool {
         || lower.ends_with(".dockerfile")
 }
 
+fn is_terraform_file(path: &std::path::Path) -> bool {
+    let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let lower = ext.to_ascii_lowercase();
+    lower == "tf" || lower == "tfvars"
+}
+
+fn is_kubernetes_manifest(path: &std::path::Path, contents: &str) -> bool {
+    let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let lower = ext.to_ascii_lowercase();
+    if lower != "yaml" && lower != "yml" {
+        return false;
+    }
+    let Some(re) = k8s_manifest_signature() else {
+        return false;
+    };
+    let head: String = contents.lines().take(80).collect::<Vec<_>>().join("\n");
+    re.is_match(&head)
+}
+
+fn k8s_manifest_signature() -> Option<&'static Regex> {
+    static RE: OnceLock<Option<Regex>> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?m)^\s*apiVersion:\s*\S[\s\S]*?^\s*kind:\s*(?:Pod|Deployment|StatefulSet|DaemonSet|Job|CronJob|ReplicaSet|ReplicationController)\b",
+        )
+        .ok()
+    })
+    .as_ref()
+}
+
 struct PatternSpec {
     code: &'static str,
     message: &'static str,
@@ -84,7 +126,7 @@ struct CompiledPattern {
     regex: Regex,
 }
 
-const PATTERN_SPECS: &[PatternSpec] = &[
+const DOCKER_PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
         code: "RSTR-IAC-001",
         message: "image tag ':latest'; pulls a moving target and breaks build reproducibility",
@@ -129,11 +171,57 @@ const PATTERN_SPECS: &[PatternSpec] = &[
     },
 ];
 
-static PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
+const K8S_PATTERN_SPECS: &[PatternSpec] = &[
+    PatternSpec {
+        code: "RSTR-IAC-007",
+        message: "Kubernetes container runs with `privileged: true`; grants full host-level capabilities",
+        severity: Severity::High,
+        help: "drop `privileged: true` and request only the specific capabilities you actually need under `securityContext.capabilities.add`",
+        pattern: r"(?m)^\s*privileged:\s*true\b",
+    },
+    PatternSpec {
+        code: "RSTR-IAC-008",
+        message: "PodSpec shares a host namespace (`hostNetwork`, `hostPID`, or `hostIPC` is true); breaks isolation between the container and the node",
+        severity: Severity::High,
+        help: "remove the host* flag; if you genuinely need host access, document the threat model and pin the workload to a dedicated node pool",
+        pattern: r"(?m)^\s*host(?:Network|PID|IPC):\s*true\b",
+    },
+];
 
-fn compiled_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
-    let cached = PATTERNS.get_or_init(|| {
-        PATTERN_SPECS
+const TF_PATTERN_SPECS: &[PatternSpec] = &[
+    PatternSpec {
+        code: "RSTR-IAC-009",
+        message: "Terraform sets `acl = \"public-read\"` (or `public-read-write`); the bucket is world-readable",
+        severity: Severity::High,
+        help: "use `acl = \"private\"` and a `aws_s3_bucket_policy` for any explicit cross-account / public access",
+        pattern: r#"(?i)\bacl\s*=\s*"public-read(?:-write)?""#,
+    },
+    PatternSpec {
+        code: "RSTR-IAC-010",
+        message: "Terraform allows ingress from `0.0.0.0/0`; the resource is reachable from the entire internet",
+        severity: Severity::Critical,
+        help: "narrow `cidr_blocks` to the office/VPN range, or front the service with a load balancer and tighten the security-group rules",
+        pattern: r#"(?m)cidr_blocks\s*=\s*\[\s*"0\.0\.0\.0/0""#,
+    },
+    PatternSpec {
+        code: "RSTR-IAC-011",
+        message: "Terraform sets `publicly_accessible = true` on a database; the DB endpoint is exposed to the internet",
+        severity: Severity::High,
+        help: "set `publicly_accessible = false` and connect via private networking (VPC peering, PrivateLink, or VPN)",
+        pattern: r"(?m)\bpublicly_accessible\s*=\s*true\b",
+    },
+];
+
+static DOCKER_PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
+static K8S_PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
+static TF_PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
+
+fn compile_specs(
+    cache: &'static OnceLock<Result<Vec<CompiledPattern>, regex::Error>>,
+    specs: &'static [PatternSpec],
+) -> Result<&'static [CompiledPattern], AnalyzerError> {
+    let cached = cache.get_or_init(|| {
+        specs
             .iter()
             .map(|spec| {
                 Regex::new(spec.pattern).map(|regex| CompiledPattern {
@@ -153,6 +241,18 @@ fn compiled_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
             message: format!("failed to compile a builtin iac pattern: {e}"),
         }),
     }
+}
+
+fn compiled_docker_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
+    compile_specs(&DOCKER_PATTERNS, DOCKER_PATTERN_SPECS)
+}
+
+fn compiled_k8s_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
+    compile_specs(&K8S_PATTERNS, K8S_PATTERN_SPECS)
+}
+
+fn compiled_tf_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
+    compile_specs(&TF_PATTERNS, TF_PATTERN_SPECS)
 }
 
 fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
@@ -179,11 +279,9 @@ mod tests {
 
     #[test]
     fn compiled_patterns_compile_cleanly() {
-        let result = compiled_patterns();
-        if let Err(e) = &result {
-            eprintln!("pattern compile error: {e:?}");
-        }
-        assert!(result.is_ok());
+        assert!(compiled_docker_patterns().is_ok());
+        assert!(compiled_k8s_patterns().is_ok());
+        assert!(compiled_tf_patterns().is_ok());
     }
 
     #[test]
@@ -198,80 +296,166 @@ mod tests {
     }
 
     #[test]
-    fn from_latest_matches() {
-        let patterns = match compiled_patterns() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let re = patterns
+    fn is_terraform_file_recognises_tf_and_tfvars() {
+        assert!(is_terraform_file(&PathBuf::from("main.tf")));
+        assert!(is_terraform_file(&PathBuf::from("variables.TF")));
+        assert!(is_terraform_file(&PathBuf::from("prod.tfvars")));
+        assert!(!is_terraform_file(&PathBuf::from("main.tfstate")));
+        assert!(!is_terraform_file(&PathBuf::from("README.md")));
+    }
+
+    #[test]
+    fn is_kubernetes_manifest_requires_apiversion_and_kind() {
+        let manifest = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: x\n";
+        assert!(is_kubernetes_manifest(&PathBuf::from("dep.yaml"), manifest));
+        let pod = "apiVersion: v1\nkind: Pod\n";
+        assert!(is_kubernetes_manifest(&PathBuf::from("pod.yml"), pod));
+        let configmap = "apiVersion: v1\nkind: ConfigMap\n";
+        assert!(!is_kubernetes_manifest(
+            &PathBuf::from("cm.yaml"),
+            configmap
+        ));
+        let not_yaml = "apiVersion: v1\nkind: Pod\n";
+        assert!(!is_kubernetes_manifest(&PathBuf::from("pod.txt"), not_yaml));
+        let plain_yaml = "foo: bar\nbaz: qux\n";
+        assert!(!is_kubernetes_manifest(
+            &PathBuf::from("cfg.yaml"),
+            plain_yaml
+        ));
+    }
+
+    fn docker_regex(code: &str, message_substring: &str) -> Option<&'static Regex> {
+        let patterns = compiled_docker_patterns().ok()?;
+        patterns
             .iter()
-            .find(|p| p.code == "RSTR-IAC-001" && p.message.contains("latest"))
-            .map(|p| &p.regex);
-        let Some(re) = re else { return };
-        assert!(re.is_match("FROM alpine:latest\n"));
-        assert!(re.is_match("FROM node:latest\nRUN npm i\n"));
-        assert!(!re.is_match("FROM alpine:3.20\n"));
+            .find(|p| p.code == code && p.message.contains(message_substring))
+            .map(|p| &p.regex)
+    }
+
+    fn docker_regex_by_code(code: &str) -> Option<&'static Regex> {
+        let patterns = compiled_docker_patterns().ok()?;
+        patterns.iter().find(|p| p.code == code).map(|p| &p.regex)
+    }
+
+    fn k8s_regex(code: &str) -> Option<&'static Regex> {
+        let patterns = compiled_k8s_patterns().ok()?;
+        patterns.iter().find(|p| p.code == code).map(|p| &p.regex)
+    }
+
+    fn tf_regex(code: &str) -> Option<&'static Regex> {
+        let patterns = compiled_tf_patterns().ok()?;
+        patterns.iter().find(|p| p.code == code).map(|p| &p.regex)
+    }
+
+    #[test]
+    fn from_latest_matches() {
+        let re = docker_regex("RSTR-IAC-001", "latest");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("FROM alpine:latest\n"));
+            assert!(re.is_match("FROM node:latest\nRUN npm i\n"));
+            assert!(!re.is_match("FROM alpine:3.20\n"));
+        }
     }
 
     #[test]
     fn user_root_matches() {
-        let patterns = match compiled_patterns() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let re = patterns
-            .iter()
-            .find(|p| p.code == "RSTR-IAC-002")
-            .map(|p| &p.regex);
-        let Some(re) = re else { return };
-        assert!(re.is_match("FROM alpine\nUSER root\n"));
-        assert!(!re.is_match("FROM alpine\nUSER appuser\n"));
+        let re = docker_regex_by_code("RSTR-IAC-002");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("FROM alpine\nUSER root\n"));
+            assert!(!re.is_match("FROM alpine\nUSER appuser\n"));
+        }
     }
 
     #[test]
     fn add_remote_url_matches() {
-        let patterns = match compiled_patterns() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let re = patterns
-            .iter()
-            .find(|p| p.code == "RSTR-IAC-003")
-            .map(|p| &p.regex);
-        let Some(re) = re else { return };
-        assert!(re.is_match("ADD https://example.com/get.sh /tmp/\n"));
-        assert!(!re.is_match("ADD ./local-file /tmp/\n"));
+        let re = docker_regex_by_code("RSTR-IAC-003");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("ADD https://example.com/get.sh /tmp/\n"));
+            assert!(!re.is_match("ADD ./local-file /tmp/\n"));
+        }
     }
 
     #[test]
     fn chmod_777_matches() {
-        let patterns = match compiled_patterns() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let re = patterns
-            .iter()
-            .find(|p| p.code == "RSTR-IAC-005")
-            .map(|p| &p.regex);
-        let Some(re) = re else { return };
-        assert!(re.is_match("RUN chmod 777 /tmp/foo\n"));
-        assert!(re.is_match("RUN chmod 0777 /tmp/foo\n"));
-        assert!(!re.is_match("RUN chmod 755 /usr/bin/app\n"));
+        let re = docker_regex_by_code("RSTR-IAC-005");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("RUN chmod 777 /tmp/foo\n"));
+            assert!(re.is_match("RUN chmod 0777 /tmp/foo\n"));
+            assert!(!re.is_match("RUN chmod 755 /usr/bin/app\n"));
+        }
     }
 
     #[test]
     fn curl_pipe_sh_matches() {
-        let patterns = match compiled_patterns() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let re = patterns
-            .iter()
-            .find(|p| p.code == "RSTR-IAC-006")
-            .map(|p| &p.regex);
-        let Some(re) = re else { return };
-        assert!(re.is_match("RUN curl -fsSL https://get.example.com | bash\n"));
-        assert!(re.is_match("RUN curl https://get.example.com | sudo sh\n"));
-        assert!(!re.is_match("RUN curl -fsSL https://get.example.com -o /tmp/get.sh\n"));
+        let re = docker_regex_by_code("RSTR-IAC-006");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("RUN curl -fsSL https://get.example.com | bash\n"));
+            assert!(re.is_match("RUN curl https://get.example.com | sudo sh\n"));
+            assert!(!re.is_match("RUN curl -fsSL https://get.example.com -o /tmp/get.sh\n"));
+        }
+    }
+
+    #[test]
+    fn k8s_privileged_true_matches() {
+        let re = k8s_regex("RSTR-IAC-007");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("    securityContext:\n      privileged: true\n"));
+            assert!(re.is_match("        privileged: true\n"));
+            assert!(!re.is_match("        privileged: false\n"));
+            assert!(!re.is_match("        allowPrivilegeEscalation: true\n"));
+        }
+    }
+
+    #[test]
+    fn k8s_host_namespace_matches() {
+        let re = k8s_regex("RSTR-IAC-008");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("spec:\n  hostNetwork: true\n"));
+            assert!(re.is_match("  hostPID: true\n"));
+            assert!(re.is_match("  hostIPC: true\n"));
+            assert!(!re.is_match("  hostNetwork: false\n"));
+            assert!(!re.is_match("  hostname: example\n"));
+        }
+    }
+
+    #[test]
+    fn tf_public_acl_matches() {
+        let re = tf_regex("RSTR-IAC-009");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match(r#"  acl = "public-read""#));
+            assert!(re.is_match(r#"  acl   =   "public-read-write""#));
+            assert!(!re.is_match(r#"  acl = "private""#));
+            assert!(!re.is_match(r#"  acl = "authenticated-read""#));
+        }
+    }
+
+    #[test]
+    fn tf_open_cidr_matches() {
+        let re = tf_regex("RSTR-IAC-010");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match(r#"  cidr_blocks = ["0.0.0.0/0"]"#));
+            assert!(re.is_match(r#"cidr_blocks=[ "0.0.0.0/0"]"#));
+            assert!(!re.is_match(r#"  cidr_blocks = ["10.0.0.0/8"]"#));
+        }
+    }
+
+    #[test]
+    fn tf_publicly_accessible_matches() {
+        let re = tf_regex("RSTR-IAC-011");
+        assert!(re.is_some());
+        if let Some(re) = re {
+            assert!(re.is_match("  publicly_accessible = true"));
+            assert!(re.is_match("publicly_accessible=true"));
+            assert!(!re.is_match("  publicly_accessible = false"));
+        }
     }
 }
