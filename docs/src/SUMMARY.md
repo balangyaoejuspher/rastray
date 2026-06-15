@@ -1,6 +1,7 @@
 # Summary
 
 - [Introduction](./introduction.md)
+- [Quickstart](./quickstart.md)
 - [How to read these pages](./how-to-read.md)
 
 # Benchmarks

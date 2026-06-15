@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Docs Quickstart page** at `docs/src/quickstart.md` consolidating
+  install (installer, cargo, Windows ps1), smoke-test, pre-commit
+  integration, GitHub Actions integration, and editor (LSP) wiring
+  into one two-minute path. Linked from `SUMMARY.md` between the
+  Introduction and the "How to read these pages" guide.
+
+### Changed
+
+- README pre-commit example now pins `rev: v0.11.0` (was `v0.4.0`,
+  badly stale). Existing consumers using `pre-commit autoupdate`
+  were unaffected; consumers who copy-pasted the README snippet now
+  get a real existing tag on first install.
+
 - **Kubernetes and Terraform rule coverage** broadens the IaC analyzer
   from Dockerfile-only to three file types. Five new rules:
   - `RSTR-IAC-007` (`High`) — Kubernetes container with
