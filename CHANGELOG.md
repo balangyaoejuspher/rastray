@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Built-in fixture-noise filter** for the two secret-scanning rules
+  most prone to false positives on real codebases when intentional
+  test fixtures hold sample PEM blocks or API-key snippets:
+  `RSTR-SEC-007` and `RSTR-SEC-006`. Findings for those codes are now
+  silently dropped when the file path contains any of the common
+  test-fixture segments (`tests`, `test`, `unittests`, `unittest`,
+  `spec`, `specs`, `__tests__`, `fixtures`, `fixture`, `samples`,
+  `sample`, `examples`, `example`, `testdata`, `test-fixtures`,
+  `test_fixtures`). The new `--no-default-skip` flag opts out of
+  this filter when needed.
+
+  Calibration: on the django-DefectDojo benchmark, the filter brings
+  the fresh-adoption finding count from 1 221 to 715 (-41%) with no
+  reduction in coverage of source code. Every dropped finding is one
+  rastray *would* have flagged before; the dropped ones are
+  overwhelmingly intentional fixtures.
+
 ## [0.11.0] - 2026-06-16
 
 ### Added
