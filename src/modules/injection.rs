@@ -90,6 +90,7 @@ const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const PY_EXTENSIONS: &[&str] = &["py"];
 const GO_EXTENSIONS: &[&str] = &["go"];
 const PHP_EXTENSIONS: &[&str] = &["php"];
+const RB_EXTENSIONS: &[&str] = &["rb"];
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -227,6 +228,30 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         help: "remove backticks (`...`) and refactor to a vetted API; if you must shell out, use escapeshellarg(...)",
         pattern: r#"`[^`]*\$_(GET|POST|REQUEST|COOKIE)\b[^`]*`"#,
         extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-008",
+        message: "Rails ActiveRecord .where with string interpolation of params; SQL-injection risk",
+        severity: Severity::Critical,
+        help: "use parameterised form: Model.where('id = ?', params[:id]) or hash form Model.where(id: params[:id]) which both delegate to prepared statements",
+        pattern: r#"\.(?:where|find_by_sql|exists\?|update_all|delete_all|joins|having|order|group|select|from)\s*\(\s*"[^"]*#\{[^}]*params\b"#,
+        extensions: RB_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-009",
+        message: "Rails .constantize / .classify / .safe_constantize on request params; arbitrary class instantiation risk",
+        severity: Severity::High,
+        help: "validate against an allow-list of expected class names (e.g. {'user' => User, 'admin' => AdminUser}.fetch(params[:kind])) before resolving; constantize on attacker input has historically led to RCE via gadget chains",
+        pattern: r"\bparams\[\s*:?[A-Za-z_][A-Za-z0-9_]*\s*\]\s*\.\s*(?:constantize|classify|safe_constantize)\b",
+        extensions: RB_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-010",
+        message: "Rails render with inline:/text:/inline_template: containing params; server-side template injection risk",
+        severity: Severity::Critical,
+        help: "render fixed templates and pass user input as locals: render :show, locals: { name: params[:name] }; never let user input become the template source",
+        pattern: r#"\brender\s*\(?\s*(?:inline|text|inline_template)\s*:\s*[^,)]*#\{[^}]*params\b"#,
+        extensions: RB_EXTENSIONS,
     },
 ];
 
@@ -417,5 +442,55 @@ mod tests {
         assert!(!regexes
             .iter()
             .any(|re| re.is_match(r#"exec("/usr/bin/uptime")"#)));
+    }
+
+    #[test]
+    fn rails_where_interpolation_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let re = patterns
+            .iter()
+            .find(|p| p.code == "RSTR-INJ-008")
+            .map(|p| &p.regex);
+        let Some(re) = re else { return };
+        assert!(re.is_match(r#"User.where("id = '#{params[:user][:id]}'")"#));
+        assert!(re.is_match(r#"User.find_by_sql("SELECT * FROM users WHERE id = #{params[:id]}")"#));
+        assert!(!re.is_match(r#"User.where(id: params[:id])"#));
+        assert!(!re.is_match(r#"User.where("id = ?", params[:id])"#));
+    }
+
+    #[test]
+    fn rails_constantize_on_params_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let re = patterns
+            .iter()
+            .find(|p| p.code == "RSTR-INJ-009")
+            .map(|p| &p.regex);
+        let Some(re) = re else { return };
+        assert!(re.is_match(r#"model = params[:class].constantize"#));
+        assert!(re.is_match(r#"klass = params[:kind].safe_constantize"#));
+        assert!(re.is_match(r#"model = params[:class].classify"#));
+        assert!(!re.is_match(r#"klass = ALLOWED_CLASSES.fetch(params[:kind])"#));
+    }
+
+    #[test]
+    fn rails_render_inline_with_params_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let re = patterns
+            .iter()
+            .find(|p| p.code == "RSTR-INJ-010")
+            .map(|p| &p.regex);
+        let Some(re) = re else { return };
+        assert!(re.is_match(r#"render inline: "<h1>Hi #{params[:name]}</h1>""#));
+        assert!(re.is_match(r#"render(text: "Hello #{params[:name]}")"#));
+        assert!(!re.is_match(r#"render :show, locals: { name: params[:name] }"#));
     }
 }

@@ -44,6 +44,9 @@
 - [RSTR-INJ-005 — Go exec.Command with sh -c](./rules/RSTR-INJ-005.md)
 - [RSTR-INJ-006 — PHP SQL query built from request superglobal](./rules/RSTR-INJ-006.md)
 - [RSTR-INJ-007 — PHP command exec on request superglobal](./rules/RSTR-INJ-007.md)
+- [RSTR-INJ-008 — Rails .where with string interpolation of params](./rules/RSTR-INJ-008.md)
+- [RSTR-INJ-009 — Rails params[...].constantize / classify](./rules/RSTR-INJ-009.md)
+- [RSTR-INJ-010 — Rails render inline: / text: with params interpolation](./rules/RSTR-INJ-010.md)
 
 # Server-side request forgery
 
@@ -74,6 +77,7 @@
 - [RSTR-RDR-001 — Express res.redirect(req.x)](./rules/RSTR-RDR-001.md)
 - [RSTR-RDR-002 — Flask / Django redirect with request input](./rules/RSTR-RDR-002.md)
 - [RSTR-RDR-003 — Go http.Redirect with request input](./rules/RSTR-RDR-003.md)
+- [RSTR-RDR-004 — Rails redirect_to params[...]](./rules/RSTR-RDR-004.md)
 
 # Server-side template injection
 
@@ -129,6 +133,7 @@
 - [RSTR-ORM-002 — Django ORM create with **request.POST](./rules/RSTR-ORM-002.md)
 - [RSTR-ORM-003 — Rails create / update with raw params](./rules/RSTR-ORM-003.md)
 - [RSTR-ORM-004 — raw SQL template literal](./rules/RSTR-ORM-004.md)
+- [RSTR-ORM-005 — Rails params.require(:x).permit! (open permit)](./rules/RSTR-ORM-005.md)
 
 # LDAP injection
 

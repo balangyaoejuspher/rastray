@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Ruby (Rails) rule coverage broadened** with five new direct-sink
+  patterns covering the OWASP-Top-Ten cases that account for most
+  real-world Rails findings:
+  - `RSTR-INJ-008` (`Critical`) — Rails ActiveRecord `.where` /
+    `.find_by_sql` / `.update_all` / `.delete_all` etc. called with
+    a string-interpolated SQL fragment that contains `params[...]`.
+  - `RSTR-INJ-009` (`High`) — `params[:x].constantize` /
+    `.safe_constantize` / `.classify` (arbitrary class instantiation
+    from request input).
+  - `RSTR-INJ-010` (`Critical`) — Rails `render inline:` / `text:`
+    with `#{params[...]}` interpolation (server-side template
+    injection).
+  - `RSTR-ORM-005` (`High`) — `params.require(:x).permit!`
+    (open-permit form of Strong Parameters).
+  - `RSTR-RDR-004` (`Medium`) — `redirect_to params[...]`
+    (open-redirect).
+
+  All five are direct-sink matches; the request value must appear in
+  the same call/expression. Same conservative one-step taint scope as
+  every other rastray rule.
+
+  Seven new unit tests cover the patterns and their safe-form
+  counter-examples. Five new docs pages follow the established
+  template. The RailsGoat benchmark page is refreshed: rastray
+  findings on RailsGoat grew from 6 to 11 (almost 2x) — closes the
+  largest remaining catch-rate gap surfaced by v0.9.0 benchmarks.
+
+## [0.10.0] - 2026-06-15
+
+### Added
+
 - **PHP rule coverage broadened** with five new direct-superglobal
   patterns covering the OWASP-Top-Ten cases that account for most
   real-world PHP findings:

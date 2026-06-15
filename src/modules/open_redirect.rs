@@ -86,6 +86,7 @@ struct CompiledPattern {
 const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const PY_EXTENSIONS: &[&str] = &["py"];
 const GO_EXTENSIONS: &[&str] = &["go"];
+const RB_EXTENSIONS: &[&str] = &["rb"];
 
 const TRAILER: &str =
     "redirects to a URL taken from request input — open-redirect risk (attacker can send victims to a phishing page on a trusted-looking link)";
@@ -95,6 +96,8 @@ const HELP_JS: &str = "validate the target against an allow-list of known-safe p
 const HELP_PY: &str = "validate the target against an allow-list of known-safe paths; for Django, use `url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()})` before `redirect(...)` / `HttpResponseRedirect(...)`; for Flask, use `urllib.parse.urlparse` and reject anything with a `netloc`";
 
 const HELP_GO: &str = "validate the target against an allow-list of known-safe paths before passing to `http.Redirect`; reject anything containing `://`, starting with `//`, or with a non-empty `Host` after `url.Parse`";
+
+const HELP_RB: &str = "validate the target against an allow-list of safe paths before `redirect_to`; for purely internal redirects, use a named route helper (`dashboard_path`) and never pass `params[...]` directly; Rails' default ForbiddenError on cross-origin redirects helps but does not cover same-origin phishing";
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -128,6 +131,14 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         help: HELP_GO,
         pattern: r"\bhttp\.Redirect\s*\(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*\.(?:FormValue|PostFormValue|URL\.Query\(\)\.Get)\s*\([^)]+\)\s*,",
         extensions: GO_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-RDR-004",
+        trailer: TRAILER,
+        severity: Severity::Medium,
+        help: HELP_RB,
+        pattern: r"\bredirect_to\s+params\[\s*:?[A-Za-z_][A-Za-z0-9_]*\s*\]",
+        extensions: RB_EXTENSIONS,
     },
 ];
 
@@ -375,5 +386,23 @@ mod tests {
         let raw = "res.redirect(req.query.next),";
         let out = trim_match(raw);
         assert_eq!(out, "res.redirect(req.query.next)");
+    }
+
+    #[test]
+    fn rails_redirect_to_params_matches() {
+        let body = r#"def callback
+  redirect_to params[:next]
+end"#;
+        let findings = run_on("a.rb", body);
+        assert!(findings.iter().any(|f| f.code == "RSTR-RDR-004"));
+    }
+
+    #[test]
+    fn rails_redirect_to_named_route_not_flagged() {
+        let body = r#"def callback
+  redirect_to dashboard_path
+end"#;
+        let findings = run_on("a.rb", body);
+        assert!(!findings.iter().any(|f| f.code == "RSTR-RDR-004"));
     }
 }

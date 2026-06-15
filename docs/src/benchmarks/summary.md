@@ -10,7 +10,7 @@ The full sweep, all six targets × all applicable tools. See
 | [Juice Shop](./juice-shop.md)                                |      80 |      23 |       50 |  *N/A* |          1 823† |
 | [NodeGoat](./nodegoat.md)                                    |      15 |      15 |        3 |  *N/A* |           546 † |
 | [DVWA](./dvwa.md)                                            |       5 |      45 |        5 |  *N/A* |          *N/A*  |
-| [RailsGoat](./railsgoat.md)                                  |       6 |      22 |        1 |  *N/A* |          *N/A*  |
+| [RailsGoat](./railsgoat.md)                                  |      11 |      22 |        1 |  *N/A* |          *N/A*  |
 | [WebGoat](./webgoat.md)                                      |      17 |      21 |       23 |  *N/A* |          *N/A*  |
 | [django-DefectDojo](./django-defectdojo.md)                  |   1 221 |     979 |    1 290 |    218 |          *N/A*  |
 
@@ -27,7 +27,7 @@ most teams disable it. The headline number overstates how many
 | Juice Shop          |   7 320 | 140 452 |   16 578 |  *N/A* |           4 570 |
 | NodeGoat            |     326 |  11 275 |    1 405 |  *N/A* |           3 948 |
 | DVWA                |     343 |  27 889 |    2 144 |  *N/A* |          *N/A*  |
-| RailsGoat           |     419 |  27 757 |    2 627 |  *N/A* |          *N/A*  |
+| RailsGoat           |   1 970 |  27 757 |    2 627 |  *N/A* |          *N/A*  |
 | WebGoat             |   1 350 | 218 546 |    7 940 |  *N/A* |          *N/A*  |
 | django-DefectDojo   |  48 266 | 724 086 |   89 242 | 23 728 |          *N/A*  |
 
