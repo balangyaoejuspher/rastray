@@ -505,7 +505,7 @@ with one entry. Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/balangyaoejuspher/rastray
-    rev: v0.4.0
+    rev: v0.11.0
     hooks:
       - id: rastray
 ```
