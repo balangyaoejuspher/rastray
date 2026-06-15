@@ -8,6 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **LDAP-injection analyzer** (`RSTR-LDAP-*`) — two new
+  rule codes catching the most common LDAP-filter injection
+  pattern: a JS template literal or Python f-string used as
+  the LDAP filter argument.
+  - `RSTR-LDAP-001` (`High`) — Node `client.search(..., { filter: \`(uid=${u})\` })` or `client.search(\`(uid=${u})\`)` with template-literal interpolation.
+  - `RSTR-LDAP-002` (`High`) — Python `conn.search(..., f'(uid={user})')` / `conn.search_s(..., scope, f'(uid={user})')` with f-string interpolation.
+
+  Help text spells out the canonical escape:
+  `ldap-escape.filter(...)` for Node, `ldap3.utils.conv.escape_filter_chars(...)`
+  for Python; better still, use `ldapjs.parseFilter` to
+  build the filter from a structured object instead of a
+  string. Discriminator tests prove literal-string filters
+  (`'(objectClass=person)'`) are not flagged.
+
+- **ReDoS analyzer** (`RSTR-REDOS-001`, `High`) — flags
+  regex literals and `new RegExp(...)` / `re.compile(...)`
+  patterns containing a nested quantifier of the form
+  `(X+)+`, `(X*)+`, `(X+)*`, or similar — the textbook
+  catastrophic-backtracking shape that runs in exponential
+  time on inputs like `aaaa...aab`.
+
+  Covers JS regex literals (`/...../flags`), JS `new RegExp(...)`,
+  and Python `re.compile/match/search/fullmatch/findall/finditer/sub`.
+
+  Help text gives the canonical rewrite: atomic group /
+  possessive quantifier / character class
+  (`(a+)+` → `a+`, `(?:[ab])+` instead of `(a|b)+`), and
+  recommends a linear-time regex engine (RE2, `re2-wasm`,
+  Rust's `regex` crate) for any pattern that touches user
+  input. Discriminator tests prove simple `a+`, `[a-z]+`,
+  etc. are not flagged.
+
 - **ORM mass-assignment + raw-SQL analyzer** (`RSTR-ORM-*`)
   — four new rule codes covering the dominant ORM bug
   classes across Node, Python (Django), and Ruby (Rails):
