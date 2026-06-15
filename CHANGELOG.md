@@ -8,6 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **ORM mass-assignment + raw-SQL analyzer** (`RSTR-ORM-*`)
+  — four new rule codes covering the dominant ORM bug
+  classes across Node, Python (Django), and Ruby (Rails):
+  - `RSTR-ORM-001` (`High`) — Node ORM `Model.create(req.body)`
+    / `Model.update(req.body, ...)` / Prisma
+    `prisma.x.create({ data: req.body })`. Mass-assignment:
+    any field name in the request (e.g. `isAdmin`, `role`,
+    `verified`) gets written even if it wasn't in the form.
+  - `RSTR-ORM-002` (`High`) — Django
+    `Model.objects.create(**request.POST)` /
+    `filter(**request.data)` etc. Same mass-assignment
+    pattern in Python.
+  - `RSTR-ORM-003` (`High`) — Rails
+    `Model.update(params[:user])` / `Model.create(params[:x])`
+    without `params.require(...).permit(...)`. Strong
+    Parameters bypass.
+  - `RSTR-ORM-004` (`Critical`) — Node raw SQL with template
+    literals: `knex.raw(\`SELECT ... WHERE id = ${id}\`)`,
+    `sequelize.query(\`...${x}...\`)`, Prisma
+    `$queryRawUnsafe(\`...${x}...\`)`. Critical because it
+    is direct SQL injection.
+
+  Same captured-call-site message convention as the rest of
+  the security-analyzer family. Help text per ORM ecosystem
+  gives the canonical safe form: `lodash.pick(req.body,
+  ['name', 'email'])` for Node, `pydantic` / `ModelForm`
+  for Django, `params.require(:user).permit(...)` for
+  Rails, parameter binding (`?`) for raw SQL.
+
+  Discriminator tests prove the safe forms are NOT flagged:
+  `User.create(_.pick(req.body, ['name', 'email']))`,
+  `User.objects.create(name=name, email=email)` (explicit
+  kwargs), `@user.update(params.require(:user).permit(:name,
+  :email))`, `knex.raw('SELECT * WHERE id = ?', [id])`,
+  and template literals **without** `${}` interpolation.
+
 - **JWT-misuse analyzer** (`RSTR-JWT-*`) — five new rule
   codes catching the most common JSON-Web-Token bugs across
   Node (`jsonwebtoken`), Python (`pyjwt`), and Go

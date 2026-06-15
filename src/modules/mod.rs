@@ -8,6 +8,7 @@ pub mod jwt;
 pub mod network;
 pub mod nosqli;
 pub mod open_redirect;
+pub mod orm;
 pub mod path_traversal;
 pub mod performance;
 pub mod secrets;
@@ -53,6 +54,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(nosqli::NosqliAnalyzer::new()),
         Box::new(webapp_config::WebappConfigAnalyzer::new()),
         Box::new(jwt::JwtAnalyzer::new()),
+        Box::new(orm::OrmAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
