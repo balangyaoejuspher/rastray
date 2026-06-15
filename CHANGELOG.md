@@ -8,6 +8,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Web-app config analyzer** (`RSTR-COOKIE-*`, `RSTR-CORS-*`,
+  `RSTR-CSRF-*`) — eight new rule codes catching the most
+  common misconfiguration bugs in web stacks:
+
+  Session cookies (`RSTR-COOKIE-*`):
+  - `RSTR-COOKIE-001` (High) — `cookie: { ..., secure: false, ... }` in JS/TS.
+  - `RSTR-COOKIE-002` (High) — `cookie: { ..., httpOnly: false, ... }` in JS/TS.
+  - `RSTR-COOKIE-003` (Medium) — `sameSite: 'none'` (the cross-site-CSRF-enabler) in JS/TS.
+
+  CORS (`RSTR-CORS-*`):
+  - `RSTR-CORS-001` (High) — `cors({ origin: true | '*', credentials: true })` in either argument order. The browser collapses `origin: true` to the request's `Origin` header and then accepts credentials from anywhere; same-origin policy is bypassed.
+  - `RSTR-CORS-002` (High) — raw `setHeader('Access-Control-Allow-Origin', '*')` literal in JS/TS.
+
+  CSRF (`RSTR-CSRF-*`):
+  - `RSTR-CSRF-001` (High) — `WTF_CSRF_ENABLED = False` (bare assignment **or** `app.config['WTF_CSRF_ENABLED'] = False`) in Python.
+  - `RSTR-CSRF-002` (Medium) — `@csrf_exempt` decorator on a Django view.
+
+  Same captured-call-site message convention as the other
+  Phase-10 analyzer families. Help text per family gives
+  the canonical hardened form (allow-list of trusted
+  origins for CORS; `{{ csrf_token() }}` in every form for
+  Flask-WTF; `@csrf_exempt` only with signed-webhook
+  verification for Django).
+
+  Discriminator tests prove the safe forms are not flagged:
+  hardened cookies (`secure: true, httpOnly: true,
+  sameSite: 'strict'`); CORS with explicit
+  allow-list + credentials; CORS wildcard *without*
+  credentials (the safe public-API case);
+  `WTF_CSRF_ENABLED = True`; `sameSite: 'strict'`.
+
+  Multi-step taint flow and config-object indirection are
+  out of scope — same boundary as the other Phase-10
+  analyzers.
+
 - **`--fix` mode** — opt-in safe-substitution auto-fix for
   a curated set of rules that have a 1:1 mechanical
   remediation. `rastray --fix` (no apply) prints a unified
