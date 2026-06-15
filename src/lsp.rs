@@ -289,6 +289,8 @@ impl Cli {
             since: None,
             changed_only: false,
             summary_only: false,
+            fix: false,
+            fix_yes: false,
             offline: true,
             no_cache: true,
             no_ignore: false,

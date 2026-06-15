@@ -132,28 +132,30 @@ rastray -vv
 
 ### Flags
 
-| Flag                     | Default   | Description                                                                                 |
-| ------------------------ | --------- | ------------------------------------------------------------------------------------------- |
-| `PATH`                   | `.`       | Directory or file to scan.                                                                  |
-| `--min-severity <LEVEL>` | `low`     | Suppress findings below this severity. One of: `info`, `low`, `medium`, `high`, `critical`. |
-| `--json`                 | off       | Shortcut for `--format json`.                                                               |
-| `--format <FMT>`         | inferred  | `human`, `json`, `gh-actions`, `sarif`, `markdown`, `html`, `cyclonedx`, or `spdx-json`. Overrides `--json` when both are set. `html` requires `-o`. `cyclonedx` and `spdx-json` emit an SBOM and skip analyzers. |
-| `-o`, `--output <FILE>`  | stdout    | Write `json` / `sarif` / `markdown` / `html` / SBOM output to a file instead of stdout. Required for `html`. No effect for `human` / `gh-actions`. |
-| `--no-ignore`            | off       | Ignore `.gitignore`, `.ignore`, and global ignore files.                                    |
-| `--hidden`               | off       | Descend into hidden files and directories.                                                  |
-| `--follow-links`         | off       | Follow symlinks during the walk.                                                            |
-| `--include-minified`     | off       | Scan minified files (`*.min.js`, `*.bundle.css`, etc.) that are skipped by default. Detection uses both name patterns and an average-line-length probe over the first 8 KB. |
-| `-j`, `--threads <N>`    | auto      | Worker thread count for the parallel crawler.                                               |
-| `--max-depth <N>`        | unlimited | Cap directory recursion depth.                                                              |
-| `--config <FILE>`        | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one. |
-| `--no-config`            | off       | Skip config-file discovery and loading.                                                     |
-| `--fail-on <LEVEL>`      | inherited | Exit code 1 if any finding is at or above this severity. One of: `info`, `low`, `medium`, `high`, `critical`, `never`. Defaults to `--min-severity`. Overrides `[scan].fail_on` in config. |
-| `--baseline <FILE>`      | off       | Load a baseline JSON file; findings whose fingerprint matches an entry are dropped before `--fail-on` is evaluated. Lets teams adopt rastray on a legacy codebase without rewriting every existing issue. |
-| `--write-baseline <FILE>`| off       | Write the current findings to a baseline file (after config + suppression filters, before `--min-severity`). Use this once to snapshot known findings, then commit the file. |
-| `--since <REF>`          | off       | Restrict analyzers to files changed vs the given git ref (e.g. `origin/main`, `HEAD~1`). Massive speedup on PR CI. |
-| `--changed-only`         | off       | Shorthand for `--since HEAD~1`. Useful in commit hooks. |
-| `-v`, `--verbose`        | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                               |
-| `-q`, `--quiet`          | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                           |
+| Flag                      | Default   | Description                                                                                                                                                                                                                                        |
+| ------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PATH`                    | `.`       | Directory or file to scan.                                                                                                                                                                                                                         |
+| `--min-severity <LEVEL>`  | `low`     | Suppress findings below this severity. One of: `info`, `low`, `medium`, `high`, `critical`.                                                                                                                                                        |
+| `--json`                  | off       | Shortcut for `--format json`.                                                                                                                                                                                                                      |
+| `--format <FMT>`          | inferred  | `human`, `json`, `gh-actions`, `sarif`, `markdown`, `html`, `cyclonedx`, or `spdx-json`. Overrides `--json` when both are set. `html` requires `-o`. `cyclonedx` and `spdx-json` emit an SBOM and skip analyzers.                                  |
+| `-o`, `--output <FILE>`   | stdout    | Write `json` / `sarif` / `markdown` / `html` / SBOM output to a file instead of stdout. Required for `html`. No effect for `human` / `gh-actions`.                                                                                                 |
+| `--no-ignore`             | off       | Ignore `.gitignore`, `.ignore`, and global ignore files.                                                                                                                                                                                           |
+| `--hidden`                | off       | Descend into hidden files and directories.                                                                                                                                                                                                         |
+| `--follow-links`          | off       | Follow symlinks during the walk.                                                                                                                                                                                                                   |
+| `--include-minified`      | off       | Scan minified files (`*.min.js`, `*.bundle.css`, etc.) that are skipped by default. Detection uses both name patterns and an average-line-length probe over the first 8 KB.                                                                        |
+| `-j`, `--threads <N>`     | auto      | Worker thread count for the parallel crawler.                                                                                                                                                                                                      |
+| `--max-depth <N>`         | unlimited | Cap directory recursion depth.                                                                                                                                                                                                                     |
+| `--config <FILE>`         | auto      | Path to a `.rastray.toml` config file. By default, rastray walks up from the scan path looking for one.                                                                                                                                            |
+| `--no-config`             | off       | Skip config-file discovery and loading.                                                                                                                                                                                                            |
+| `--fail-on <LEVEL>`       | inherited | Exit code 1 if any finding is at or above this severity. One of: `info`, `low`, `medium`, `high`, `critical`, `never`. Defaults to `--min-severity`. Overrides `[scan].fail_on` in config.                                                         |
+| `--baseline <FILE>`       | off       | Load a baseline JSON file; findings whose fingerprint matches an entry are dropped before `--fail-on` is evaluated. Lets teams adopt rastray on a legacy codebase without rewriting every existing issue.                                          |
+| `--write-baseline <FILE>` | off       | Write the current findings to a baseline file (after config + suppression filters, before `--min-severity`). Use this once to snapshot known findings, then commit the file.                                                                       |
+| `--since <REF>`           | off       | Restrict analyzers to files changed vs the given git ref (e.g. `origin/main`, `HEAD~1`). Massive speedup on PR CI.                                                                                                                                 |
+| `--changed-only`          | off       | Shorthand for `--since HEAD~1`. Useful in commit hooks.                                                                                                                                                                                            |
+| `--fix`                   | off       | Preview safe auto-fixes (unified diff per finding) for the rules that have a 1:1 mechanical remediation (currently `RSTR-DES-002`, `RSTR-CRY-001`, `RSTR-CRY-002`). Does not modify files. Combine with `--yes` to write the changes back to disk. |
+| `--yes`                   | off       | With `--fix`: actually apply the previewed substitutions. No effect without `--fix`.                                                                                                                                                               |
+| `-v`, `--verbose`         | off       | Repeat for more detail (`-v`, `-vv`, `-vvv`).                                                                                                                                                                                                      |
+| `-q`, `--quiet`           | off       | Suppress non-finding output. Mutually exclusive with `--verbose`.                                                                                                                                                                                  |
 
 ### Configuration file
 
@@ -178,7 +180,7 @@ paths = ["target/**", "dist/**", "vendor/**"]
 
 Adopting rastray on an existing codebase that already has dozens or
 hundreds of findings? Snapshot them once as a **baseline**, commit the
-file, and let PR CI gate only on *new* findings:
+file, and let PR CI gate only on _new_ findings:
 
 ```sh
 # One-time: snapshot known findings as a baseline
@@ -193,6 +195,39 @@ Baseline entries are matched on `(rule code, normalised file path, line
 number, message)` — cosmetic changes like severity downgrades or rule
 renumbering don't drift, but adding a new occurrence or moving an issue
 to a new line surfaces as a new finding.
+
+### Auto-fix
+
+For a curated set of rules with a 1:1 mechanical remediation,
+`rastray --fix` can preview and apply the safe substitution
+automatically. Dry-run first (prints a unified diff per
+finding, modifies nothing):
+
+```sh
+rastray --fix
+```
+
+Then, once you've reviewed the diff:
+
+```sh
+rastray --fix --yes
+```
+
+The current fixer set is deliberately small — only the
+rules where a single-line string replacement is
+unambiguously correct:
+
+| Rule | Substitution | Languages |
+|---|---|---|
+| `RSTR-DES-002` | `yaml.load(` → `yaml.safe_load(` | Python |
+| `RSTR-CRY-001` | MD5 hash construction → SHA-256 | Python, Node, Java, Go |
+| `RSTR-CRY-002` | SHA-1 hash construction → SHA-256 | Python, Node, Java, Go |
+
+Rules that need multi-line refactoring (`verify=False`
+removal, `Math.random()` token generation, GHA SHA pinning)
+are not auto-fixed — they require parsing the surrounding
+call to keep argument lists and identifiers correct.
+Free / deterministic / no-LLM means we will not guess.
 
 ### Incremental scanning
 
@@ -271,11 +306,11 @@ or an email attachment. The recipient just opens it — no install.
 
 `rastray` follows the standard CI-friendly convention:
 
-| Code | Meaning                                                                |
-| ---- | ---------------------------------------------------------------------- |
-| `0`  | Scan completed; **no findings** at or above the fail-on threshold.     |
+| Code | Meaning                                                                     |
+| ---- | --------------------------------------------------------------------------- |
+| `0`  | Scan completed; **no findings** at or above the fail-on threshold.          |
 | `1`  | Scan completed; **at least one finding** at or above the fail-on threshold. |
-| `2`  | **Runtime error** (I/O failure, malformed input, configuration error). |
+| `2`  | **Runtime error** (I/O failure, malformed input, configuration error).      |
 
 The fail-on threshold defaults to `--min-severity` and can be overridden
 via `--fail-on <LEVEL>` or `[scan].fail_on` in `.rastray.toml`. Use
@@ -302,14 +337,14 @@ rastray --min-severity high || exit $?
                   └─────┬──────┘
                         │ CrawlSummary
                   ┌─────▼──────────────────────────────────────────┐
-                  │  modules/                                       │
-                  │    Security:  secrets, crypto, injection,       │
-                  │               network, gha, iac,                │
-                  │               deserialization, path_traversal,  │
-                  │               ssrf, xss, open_redirect,         │
-                  │               ssti, xxe, nosqli                 │
-                  │    Deps:      dependencies (OSV.dev)            │
-                  │    Perf:      performance (tree-sitter)         │
+                  │  modules/                                      │
+                  │    Security:  secrets, crypto, injection,      │
+                  │               network, gha, iac,               │
+                  │               deserialization, path_traversal, │
+                  │               ssrf, xss, open_redirect,        │
+                  │               ssti, xxe, nosqli                │
+                  │    Deps:      dependencies (OSV.dev)           │
+                  │    Perf:      performance (tree-sitter)        │
                   └─────┬──────────────────────────────────────────┘
                         │ Vec<Finding>
                   ┌─────▼──────┐
@@ -330,24 +365,24 @@ rastray --min-severity high || exit $?
 Every finding has a stable `RSTR-<FAMILY>-<NNN>` code. Use these in
 `.rastray.toml` to disable or re-tune individual rules:
 
-| Family | Module | What it catches |
-|---|---|---|
-| `RSTR-SEC-*` | `secrets` | High-entropy hard-coded credentials, AWS / GitHub / Stripe / OpenAI token patterns. |
-| `RSTR-CRY-*` | `crypto` | Broken algorithms (`md5`, `sha1`, DES, ECB mode), weak RNG (`Math.random`, `random.random` for security). |
-| `RSTR-INJ-*` | `injection` | SQL injection via f-strings / template literals, `shell=True` in `subprocess`, `eval(user_input)`, `sh -c <user_cmd>`. |
-| `RSTR-NET-*` | `network` | Plaintext `http://` endpoints in code, disabled TLS verification (`verify=False`, `rejectUnauthorized: false`). |
-| `RSTR-GHA-*` | `gha` | GitHub Actions misconfig: unpinned actions, missing `permissions:`, write tokens. |
-| `RSTR-IAC-*` | `iac` | Terraform / Dockerfile / k8s misconfig (root user, `:latest`, public S3 buckets, missing limits). |
-| `RSTR-DES-*` | `deserialization` | `pickle.loads(user_input)`, `yaml.load` without `SafeLoader`, Java `ObjectInputStream` on untrusted data. |
-| `RSTR-PTH-*` | `path_traversal` | `open(user_input)` / `fs.readFile(req.body.path)` without normalization. |
-| `RSTR-SSRF-*` | `ssrf` | `fetch(req.body.url)`, `requests.get(request.args.get('u'))`, `http.Get(r.FormValue(...))`. |
-| `RSTR-XSS-*` | `xss` | Reflected XSS (Express, Flask, Go `fmt.Fprintf`) and DOM XSS (`innerHTML = location.hash`). |
-| `RSTR-RDR-*` | `open_redirect` | `res.redirect(req.query.next)`, Flask / Django `redirect(request.args.get(...))`. |
-| `RSTR-SSTI-*` | `ssti` | `render_template_string(req.body)`, `pug.render(req.body)`, `Handlebars.compile(req.body)`. |
-| `RSTR-XXE-*` | `xxe` | Python stdlib `xml.etree`, `lxml.etree.XMLParser(resolve_entities=True)`, Java `DocumentBuilderFactory` without hardening, `libxmljs.parseXml(..., {noent: true})`. |
-| `RSTR-NOSQLI-*` | `nosqli` | MongoDB operator injection (`users.find({ user: req.body.user })`), Mongo `$where` with request input (Critical — RCE in the database process). |
-| `RSTR-DEP-*` | `dependencies` | Known-vulnerable packages in `Cargo.lock`, `package-lock.json`, `requirements.txt`, `poetry.lock`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `packages.lock.json`, `Package.resolved`, `pubspec.lock`, `mix.lock`, Gradle / Maven, `go.sum`. Cross-referenced against [OSV.dev](https://osv.dev). |
-| `RSTR-PERF-*` | `performance` | Tree-sitter AST checks: `String += in loop`, redundant `Vec::clone`, allocations inside hot loops. |
+| Family          | Module            | What it catches                                                                                                                                                                                                                                                                                                     |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RSTR-SEC-*`    | `secrets`         | High-entropy hard-coded credentials, AWS / GitHub / Stripe / OpenAI token patterns.                                                                                                                                                                                                                                 |
+| `RSTR-CRY-*`    | `crypto`          | Broken algorithms (`md5`, `sha1`, DES, ECB mode), weak RNG (`Math.random`, `random.random` for security).                                                                                                                                                                                                           |
+| `RSTR-INJ-*`    | `injection`       | SQL injection via f-strings / template literals, `shell=True` in `subprocess`, `eval(user_input)`, `sh -c <user_cmd>`.                                                                                                                                                                                              |
+| `RSTR-NET-*`    | `network`         | Plaintext `http://` endpoints in code, disabled TLS verification (`verify=False`, `rejectUnauthorized: false`).                                                                                                                                                                                                     |
+| `RSTR-GHA-*`    | `gha`             | GitHub Actions misconfig: unpinned actions, missing `permissions:`, write tokens.                                                                                                                                                                                                                                   |
+| `RSTR-IAC-*`    | `iac`             | Terraform / Dockerfile / k8s misconfig (root user, `:latest`, public S3 buckets, missing limits).                                                                                                                                                                                                                   |
+| `RSTR-DES-*`    | `deserialization` | `pickle.loads(user_input)`, `yaml.load` without `SafeLoader`, Java `ObjectInputStream` on untrusted data.                                                                                                                                                                                                           |
+| `RSTR-PTH-*`    | `path_traversal`  | `open(user_input)` / `fs.readFile(req.body.path)` without normalization.                                                                                                                                                                                                                                            |
+| `RSTR-SSRF-*`   | `ssrf`            | `fetch(req.body.url)`, `requests.get(request.args.get('u'))`, `http.Get(r.FormValue(...))`.                                                                                                                                                                                                                         |
+| `RSTR-XSS-*`    | `xss`             | Reflected XSS (Express, Flask, Go `fmt.Fprintf`) and DOM XSS (`innerHTML = location.hash`).                                                                                                                                                                                                                         |
+| `RSTR-RDR-*`    | `open_redirect`   | `res.redirect(req.query.next)`, Flask / Django `redirect(request.args.get(...))`.                                                                                                                                                                                                                                   |
+| `RSTR-SSTI-*`   | `ssti`            | `render_template_string(req.body)`, `pug.render(req.body)`, `Handlebars.compile(req.body)`.                                                                                                                                                                                                                         |
+| `RSTR-XXE-*`    | `xxe`             | Python stdlib `xml.etree`, `lxml.etree.XMLParser(resolve_entities=True)`, Java `DocumentBuilderFactory` without hardening, `libxmljs.parseXml(..., {noent: true})`.                                                                                                                                                 |
+| `RSTR-NOSQLI-*` | `nosqli`          | MongoDB operator injection (`users.find({ user: req.body.user })`), Mongo `$where` with request input (Critical — RCE in the database process).                                                                                                                                                                     |
+| `RSTR-DEP-*`    | `dependencies`    | Known-vulnerable packages in `Cargo.lock`, `package-lock.json`, `requirements.txt`, `poetry.lock`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `packages.lock.json`, `Package.resolved`, `pubspec.lock`, `mix.lock`, Gradle / Maven, `go.sum`. Cross-referenced against [OSV.dev](https://osv.dev). |
+| `RSTR-PERF-*`   | `performance`     | Tree-sitter AST checks: `String += in loop`, redundant `Vec::clone`, allocations inside hot loops.                                                                                                                                                                                                                  |
 
 Every security finding follows the **captured-call-site message
 convention**: the matched call is interpolated into the message body so
@@ -454,10 +489,10 @@ pre-commit install
 
 Two hook IDs are exposed:
 
-| Hook ID | Behaviour |
-|---|---|
-| `rastray` | Runs `rastray --fail-on high`. Blocks the commit only on High or Critical findings. Recommended default. |
-| `rastray-strict` | Runs `rastray --fail-on low`. Blocks the commit on any finding at Low severity or above. |
+| Hook ID          | Behaviour                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `rastray`        | Runs `rastray --fail-on high`. Blocks the commit only on High or Critical findings. Recommended default. |
+| `rastray-strict` | Runs `rastray --fail-on low`. Blocks the commit on any finding at Low severity or above.                 |
 
 Both hooks use `language: system`, which means `rastray` must already be
 on your `PATH`. Install it via the [prebuilt installer](#prebuilt-binaries-recommended)

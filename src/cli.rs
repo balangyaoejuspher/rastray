@@ -125,6 +125,12 @@ pub struct Cli {
     #[arg(long = "summary-only", default_value_t = false)]
     pub summary_only: bool,
 
+    #[arg(long = "fix", default_value_t = false)]
+    pub fix: bool,
+
+    #[arg(long = "yes", default_value_t = false)]
+    pub fix_yes: bool,
+
     #[arg(long = "offline", default_value_t = false)]
     pub offline: bool,
 
