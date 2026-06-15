@@ -170,6 +170,14 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         pattern: r"\.\$queryRawUnsafe\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`",
         extensions: JS_EXTENSIONS,
     },
+    PatternSpec {
+        code: "RSTR-ORM-005",
+        trailer: TRAILER_MASS_ASSIGN,
+        severity: Severity::High,
+        help: HELP_RB_ORM,
+        pattern: r"\bparams\b[^;\n]*\.\s*permit!\s*(?:$|[^A-Za-z0-9_])",
+        extensions: RB_EXTENSIONS,
+    },
 ];
 
 static PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
@@ -445,5 +453,23 @@ mod tests {
         let raw = "User.create(req.body),";
         let out = trim_match(raw);
         assert_eq!(out, "User.create(req.body)");
+    }
+
+    #[test]
+    fn rails_open_permit_matches() {
+        let body = r#"def user_params
+  params.require(:user).permit!
+end"#;
+        let findings = run_on("a.rb", body);
+        assert!(findings.iter().any(|f| f.code == "RSTR-ORM-005"));
+    }
+
+    #[test]
+    fn rails_explicit_permit_not_flagged_as_open() {
+        let body = r#"def user_params
+  params.require(:user).permit(:email, :first_name, :last_name)
+end"#;
+        let findings = run_on("a.rb", body);
+        assert!(!findings.iter().any(|f| f.code == "RSTR-ORM-005"));
     }
 }
