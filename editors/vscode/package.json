@@ -1,0 +1,89 @@
+{
+  "name": "rastray",
+  "displayName": "rastray",
+  "description": "Blazing-fast deterministic security, dependency, and performance scanner. Inline diagnostics via the rastray language server.",
+  "version": "0.1.0",
+  "publisher": "balangyaoejuspher",
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/balangyaoejuspher/rastray",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/balangyaoejuspher/rastray",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/balangyaoejuspher/rastray/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "static-analysis",
+    "audit",
+    "linter",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:rust",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:go",
+    "onLanguage:java"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "rastray",
+      "properties": {
+        "rastray.serverPath": {
+          "type": "string",
+          "default": "rastray",
+          "description": "Path to the `rastray` executable. Leave as `rastray` to use the binary on your PATH; absolute paths are accepted for non-PATH installs."
+        },
+        "rastray.serverArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["lsp"],
+          "description": "Arguments passed to the rastray executable when starting the language server. Defaults to `[\"lsp\"]`."
+        },
+        "rastray.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace level for LSP messages between the client and the rastray server. Output appears in the 'rastray' output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "rastray.restartServer",
+        "title": "rastray: Restart Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^2.27.0"
+  }
+}

@@ -518,10 +518,15 @@ name = "python"
 language-servers = [{ name = "rastray", except-features = ["format"] }]
 ```
 
-**VS Code** — a dedicated extension is in the roadmap; for now the
-LSP can be wired via the generic
-[`mattn/efm-langserver`](https://github.com/mattn/efm-langserver) or
-similar bridge.
+**VS Code** — install the bundled extension from
+[`editors/vscode/`](editors/vscode/). Until a marketplace
+publish lands, sideload the `.vsix` built locally with
+`cd editors/vscode && npm install && npm run package`
+(installs to `editors/vscode/rastray-*.vsix`, then
+"Install from VSIX..." in the Extensions view). The
+extension is a thin client around `rastray lsp`;
+activation languages and the path to the `rastray` binary
+are configurable via the `rastray.*` settings.
 
 The LSP runs in offline mode (no OSV.dev network calls), uses a single
 worker thread, and only scans the single file that just opened/saved

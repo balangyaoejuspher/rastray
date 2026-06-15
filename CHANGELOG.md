@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **VS Code extension** under [`editors/vscode/`](editors/vscode/).
+  Thin client around `rastray lsp` written in TypeScript
+  against `vscode-languageclient ^9.0.1`. Activates on
+  Rust, Python, JavaScript / JSX, TypeScript / TSX, Go, and
+  Java files; spawns `rastray lsp` over stdio and forwards
+  diagnostics into the Problems panel. Three settings
+  (`rastray.serverPath`, `rastray.serverArgs`,
+  `rastray.trace.server`) and one command
+  (`rastray: Restart Language Server`). A `vscode extension
+  build` job in CI runs `tsc` + `vsce package` on every PR
+  and uploads the resulting `.vsix` as an artifact. No
+  marketplace publish yet — sideload via the artifact or
+  build locally with `npm install && npm run package`.
+
 - **`rastray lsp` subcommand** — built-in Language Server
   Protocol implementation over stdio so findings surface
   inline in any LSP-aware editor (VS Code, Neovim, Helix,
