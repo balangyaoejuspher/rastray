@@ -363,7 +363,11 @@ rastray --min-severity high || exit $?
 ### Rule families
 
 Every finding has a stable `RSTR-<FAMILY>-<NNN>` code. Use these in
-`.rastray.toml` to disable or re-tune individual rules:
+`.rastray.toml` to disable or re-tune individual rules. The
+per-rule reference site at
+[balangyaoejuspher.github.io/rastray](https://balangyaoejuspher.github.io/rastray/)
+has a dedicated page for each rule code with examples, the
+canonical remediation, and CWE / OWASP references.
 
 | Family          | Module            | What it catches                                                                                                                                                                                                                                                                                                     |
 | --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

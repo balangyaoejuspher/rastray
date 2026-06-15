@@ -1,0 +1,28 @@
+[book]
+title = "rastray rules"
+authors = ["balangyaoejuspher"]
+description = "Per-rule reference for the rastray static-analysis CLI"
+language = "en"
+multilingual = false
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = true
+git-repository-url = "https://github.com/balangyaoejuspher/rastray"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/balangyaoejuspher/rastray/edit/main/docs/{path}"
+site-url = "/rastray/"
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.print]
+enable = true
