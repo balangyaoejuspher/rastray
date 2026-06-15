@@ -196,6 +196,38 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         pattern: r#"exec\.Command\s*\(\s*"(sh|bash|cmd)"\s*,\s*"-c""#,
         extensions: GO_EXTENSIONS,
     },
+    PatternSpec {
+        code: "RSTR-INJ-006",
+        message: "SQL query built by interpolating a request superglobal; SQL-injection risk",
+        severity: Severity::Critical,
+        help: "use a prepared statement: mysqli_prepare($db, '... WHERE id = ?') + bind_param('i', $id), or PDO with named placeholders",
+        pattern: r#"(?i)\b(?:mysqli_query|mysql_query|pg_query|pg_query_params|sqlite_query|sqlsrv_query|odbc_exec)\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-006",
+        message: "SQL query passed to ->query()/->exec() with a request superglobal; SQL-injection risk",
+        severity: Severity::Critical,
+        help: "use ->prepare() with placeholders and ->execute([...]) instead of ->query() with concatenated input",
+        pattern: r#"(?i)->\s*(?:query|exec|unbufferedQuery)\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-007",
+        message: "PHP command exec on request input; command-injection risk",
+        severity: Severity::Critical,
+        help: "validate input against an allow-list and pass arguments via escapeshellarg(...); better yet, use a dedicated library instead of shelling out",
+        pattern: r#"(?i)\b(?:exec|system|shell_exec|passthru|popen|proc_open|pcntl_exec)\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-007",
+        message: "PHP backtick operator on request input; command-injection risk",
+        severity: Severity::Critical,
+        help: "remove backticks (`...`) and refactor to a vetted API; if you must shell out, use escapeshellarg(...)",
+        pattern: r#"`[^`]*\$_(GET|POST|REQUEST|COOKIE)\b[^`]*`"#,
+        extensions: PHP_EXTENSIONS,
+    },
 ];
 
 static PATTERNS: OnceLock<Result<Vec<CompiledPattern>, regex::Error>> = OnceLock::new();
@@ -330,5 +362,60 @@ mod tests {
         assert!(re.is_match(r#"exec.Command("sh", "-c", userCmd)"#));
         assert!(re.is_match(r#"exec.Command("bash", "-c", c)"#));
         assert!(!re.is_match(r#"exec.Command("git", "clone", url)"#));
+    }
+
+    #[test]
+    fn php_sqli_mysqli_query_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let regexes: Vec<_> = patterns
+            .iter()
+            .filter(|p| p.code == "RSTR-INJ-006" && p.extensions.contains(&"php"))
+            .map(|p| &p.regex)
+            .collect();
+        assert!(!regexes.is_empty());
+        assert!(regexes.iter().any(|re| re
+            .is_match(r#"mysqli_query($db, "SELECT * FROM users WHERE id = " . $_GET['id'])"#)));
+        assert!(regexes.iter().any(|re| re.is_match(
+            r#"$pdo->query("SELECT * FROM users WHERE name = '" . $_POST['name'] . "'")"#
+        )));
+        assert!(regexes
+            .iter()
+            .any(|re| re
+                .is_match(r#"pg_query($conn, "SELECT * FROM t WHERE id = " . $_REQUEST['id'])"#)));
+        assert!(!regexes
+            .iter()
+            .any(|re| re.is_match(r#"mysqli_query($db, "SELECT * FROM users WHERE id = 42")"#)));
+    }
+
+    #[test]
+    fn php_cmd_exec_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let regexes: Vec<_> = patterns
+            .iter()
+            .filter(|p| p.code == "RSTR-INJ-007" && p.extensions.contains(&"php"))
+            .map(|p| &p.regex)
+            .collect();
+        assert!(!regexes.is_empty());
+        assert!(regexes
+            .iter()
+            .any(|re| re.is_match(r#"exec("ping -c 4 " . $_GET['host'])"#)));
+        assert!(regexes
+            .iter()
+            .any(|re| re.is_match(r#"system("ls " . $_POST['dir'])"#)));
+        assert!(regexes.iter().any(
+            |re| re.is_match(r#"shell_exec("grep " . $_REQUEST['pat'] . " /var/log/syslog")"#)
+        ));
+        assert!(regexes
+            .iter()
+            .any(|re| re.is_match(r#"$out = `ls -la $_GET[d]`;"#)));
+        assert!(!regexes
+            .iter()
+            .any(|re| re.is_match(r#"exec("/usr/bin/uptime")"#)));
     }
 }
