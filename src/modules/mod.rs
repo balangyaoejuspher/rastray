@@ -1,4 +1,5 @@
 pub mod crypto;
+pub mod custom_rules;
 pub mod dependencies;
 pub mod deserialization;
 pub mod gha;
@@ -23,6 +24,7 @@ pub mod xxe;
 use thiserror::Error;
 
 use crate::cli::Cli;
+use crate::config::Config;
 use crate::crawler::CrawlSummary;
 use crate::reporter::Finding;
 
@@ -38,7 +40,7 @@ pub trait Analyzer {
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError>;
 }
 
-pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
+pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Send + Sync>> {
     vec![
         Box::new(secrets::SecretsAnalyzer::new()),
         Box::new(crypto::CryptoAnalyzer::new()),
@@ -59,6 +61,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(orm::OrmAnalyzer::new()),
         Box::new(ldap::LdapAnalyzer::new()),
         Box::new(redos::RedosAnalyzer::new()),
+        Box::new(custom_rules::CustomRulesAnalyzer::new(&config.custom_rules)),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,

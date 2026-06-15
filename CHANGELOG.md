@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Custom regex rules** via `[[custom_rule]]` blocks in
+  `.rastray.toml`. Teams can ship project-specific checks
+  without forking the analyzer:
+
+  ```toml
+  [[custom_rule]]
+  id          = "ACME-001"
+  pattern     = '\bTODO\(security\)\b'
+  message     = "security TODO marker found"
+  severity    = "medium"
+  help        = "resolve the TODO before merging"
+  extensions  = ["rs", "py"]
+  ```
+
+  Each entry requires `id`, `pattern` (Rust regex), and
+  `message`. Optional `severity` (`info`/`low`/`medium`/
+  `high`/`critical`, default `medium`), `help` text, and
+  `extensions` filter. Loader validates non-empty
+  required fields, regex compilability, and severity
+  spelling at config load time and reports the offending
+  rule by id. Custom-rule findings flow through the same
+  baseline, suppression, severity remap, autofix exclusion,
+  and CI-gating pipeline as built-in rules.
+
 - **Per-rule documentation site** at
   [balangyaoejuspher.github.io/rastray](https://balangyaoejuspher.github.io/rastray/).
   Built with mdBook from `docs/src/`, automatically

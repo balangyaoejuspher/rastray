@@ -14,6 +14,7 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::cli::{Cli, Severity};
+use crate::config::Config;
 use crate::crawler::{CrawlSummary, DiscoveredFile, FileKind};
 use crate::modules::{default_registry, Analyzer};
 use crate::reporter::Finding;
@@ -27,7 +28,8 @@ pub struct RastrayLanguageServer {
 impl RastrayLanguageServer {
     pub fn new(client: Client) -> Self {
         let cli = Cli::default_for_lsp();
-        let analyzers = default_registry(&cli)
+        let config = Config::default();
+        let analyzers = default_registry(&cli, &config)
             .into_iter()
             .map(Arc::<dyn Analyzer + Send + Sync>::from)
             .collect();

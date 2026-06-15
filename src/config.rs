@@ -16,6 +16,8 @@ pub struct Config {
     pub rules: HashMap<String, RuleConfig>,
     #[serde(default)]
     pub suppress: Vec<SuppressRule>,
+    #[serde(default, rename = "custom_rule")]
+    pub custom_rules: Vec<CustomRule>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -56,6 +58,19 @@ pub struct SuppressRule {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CustomRule {
+    pub id: String,
+    pub pattern: String,
+    pub message: String,
+    #[serde(default)]
+    pub severity: Option<String>,
+    #[serde(default)]
+    pub help: Option<String>,
+    #[serde(default)]
+    pub extensions: Vec<String>,
+}
+
 fn default_suppress_rules() -> Vec<String> {
     vec!["*".to_string()]
 }
@@ -79,6 +94,21 @@ pub enum ConfigError {
 
     #[error("config '{path}': [[suppress]] entry has an empty `path` field")]
     SuppressMissingPath { path: PathBuf },
+
+    #[error("config '{path}': [[custom_rule]] '{id}' has an empty `{field}` field")]
+    CustomRuleMissingField {
+        path: PathBuf,
+        id: String,
+        field: &'static str,
+    },
+
+    #[error("config '{path}': [[custom_rule]] '{id}' has invalid regex: {source}")]
+    CustomRuleBadRegex {
+        path: PathBuf,
+        id: String,
+        #[source]
+        source: Box<regex::Error>,
+    },
 }
 
 impl Config {
@@ -206,6 +236,44 @@ impl Config {
                 return Err(ConfigError::SuppressMissingPath {
                     path: path.to_path_buf(),
                 });
+            }
+        }
+        for rule in &self.custom_rules {
+            if rule.id.trim().is_empty() {
+                return Err(ConfigError::CustomRuleMissingField {
+                    path: path.to_path_buf(),
+                    id: rule.id.clone(),
+                    field: "id",
+                });
+            }
+            if rule.pattern.trim().is_empty() {
+                return Err(ConfigError::CustomRuleMissingField {
+                    path: path.to_path_buf(),
+                    id: rule.id.clone(),
+                    field: "pattern",
+                });
+            }
+            if rule.message.trim().is_empty() {
+                return Err(ConfigError::CustomRuleMissingField {
+                    path: path.to_path_buf(),
+                    id: rule.id.clone(),
+                    field: "message",
+                });
+            }
+            if let Err(source) = regex::Regex::new(&rule.pattern) {
+                return Err(ConfigError::CustomRuleBadRegex {
+                    path: path.to_path_buf(),
+                    id: rule.id.clone(),
+                    source: Box::new(source),
+                });
+            }
+            if let Some(s) = &rule.severity {
+                if parse_severity(s).is_none() {
+                    return Err(ConfigError::InvalidSeverity {
+                        path: path.to_path_buf(),
+                        value: format!("{} = {s}", rule.id),
+                    });
+                }
             }
         }
         Ok(())
