@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-15
+
 ### Added
 
 - **Benchmark chapter** on the docs site comparing rastray against
