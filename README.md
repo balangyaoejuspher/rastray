@@ -174,7 +174,30 @@ paths = ["target/**", "dist/**", "vendor/**"]
 "RSTR-SEC-005" = false                          # disable a rule entirely
 "RSTR-PERF-001" = { severity = "low" }          # downgrade a rule's severity
 "RSTR-PERF-002" = { enabled = false }           # explicit form
+
+[[custom_rule]]
+id          = "ACME-001"
+pattern     = '\bTODO\(security\)\b'
+message     = "security TODO marker found"
+severity    = "medium"
+help        = "resolve the TODO before merging"
+extensions  = ["rs", "py"]
 ```
+
+#### Custom rules
+
+`[[custom_rule]]` blocks let teams ship project-specific regex checks
+without touching the rastray source. Each entry must provide an `id`, a
+`pattern` (Rust regex), and a human-readable `message`. Optional fields:
+
+- `severity` — `info`, `low`, `medium` (default), `high`, or `critical`.
+- `help` — remediation hint shown alongside the finding.
+- `extensions` — restrict the rule to files with these extensions
+  (e.g. `["rs", "py"]`). Omit to scan every source/config file.
+
+Findings emitted by custom rules participate in baseline diffing,
+suppression, severity remapping, autofix exclusion, and CI gating
+exactly like built-in rules.
 
 ### Baseline mode
 
