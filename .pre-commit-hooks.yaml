@@ -1,0 +1,31 @@
+- id: rastray
+  name: rastray
+  description: Blazing-fast deterministic security, dependency, and performance scanner.
+  entry: rastray
+  language: system
+  pass_filenames: false
+  args:
+    - --fail-on
+    - high
+  types:
+    - text
+  stages:
+    - pre-commit
+    - pre-push
+    - manual
+
+- id: rastray-strict
+  name: rastray (strict, fail on any finding)
+  description: Same as `rastray` but exits non-zero on any finding at or above low severity.
+  entry: rastray
+  language: system
+  pass_filenames: false
+  args:
+    - --fail-on
+    - low
+  types:
+    - text
+  stages:
+    - pre-commit
+    - pre-push
+    - manual

@@ -431,6 +431,40 @@ for setup instructions.
 Drop-in `.rastray.toml` snippets for common adoption patterns (advisory,
 strict, monorepo) are in [`examples/config/`](examples/config/).
 
+### Pre-commit framework
+
+`rastray` ships a top-level [`.pre-commit-hooks.yaml`](.pre-commit-hooks.yaml)
+so any project using [pre-commit](https://pre-commit.com) can wire it in
+with one entry. Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/balangyaoejuspher/rastray
+    rev: v0.4.0
+    hooks:
+      - id: rastray
+```
+
+Then install the framework and the hook:
+
+```sh
+pip install pre-commit
+pre-commit install
+```
+
+Two hook IDs are exposed:
+
+| Hook ID | Behaviour |
+|---|---|
+| `rastray` | Runs `rastray --fail-on high`. Blocks the commit only on High or Critical findings. Recommended default. |
+| `rastray-strict` | Runs `rastray --fail-on low`. Blocks the commit on any finding at Low severity or above. |
+
+Both hooks use `language: system`, which means `rastray` must already be
+on your `PATH`. Install it via the [prebuilt installer](#prebuilt-binaries-recommended)
+or `cargo install rastray --locked` first. The hooks deliberately do not
+build `rastray` from source on every contributor's machine — that would
+turn a one-second pre-commit check into a multi-minute Rust compile.
+
 ---
 
 ## Security
