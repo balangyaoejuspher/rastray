@@ -62,6 +62,38 @@ impl Analyzer for SecretsAnalyzer {
     }
 }
 
+pub fn scan_text_for_secrets(
+    contents: &str,
+    synthetic_path: std::path::PathBuf,
+) -> Result<Vec<Finding>, AnalyzerError> {
+    let patterns = compiled_patterns()?;
+    let mut findings = Vec::new();
+    for pattern in patterns {
+        for m in pattern.regex.find_iter(contents) {
+            if let Some(threshold) = pattern.min_entropy {
+                if shannon_entropy(m.as_str()) < threshold {
+                    continue;
+                }
+            }
+            let (line, column) = byte_offset_to_line_col(contents, m.start());
+            let location = Location::file(synthetic_path.clone())
+                .with_span(m.start(), m.len())
+                .with_line(line, column);
+            findings.push(
+                Finding::new(
+                    pattern.code,
+                    format!("possible {} detected", pattern.name),
+                    pattern.severity,
+                    Category::Secret,
+                )
+                .with_help(pattern.help)
+                .with_location(location),
+            );
+        }
+    }
+    Ok(findings)
+}
+
 fn is_scannable(kind: FileKind) -> bool {
     matches!(
         kind,

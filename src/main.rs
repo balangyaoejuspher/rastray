@@ -6,6 +6,7 @@ mod cli;
 mod config;
 mod crawler;
 mod git_changes;
+mod history;
 mod lsp;
 mod modules;
 mod reporter;
@@ -60,6 +61,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::autofix))]
     AutoFix(#[from] AutoFixError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::history))]
+    History(#[from] history::HistoryScanError),
 }
 
 mod exit {
@@ -94,6 +99,33 @@ fn main() -> ExitCode {
         };
         runtime.block_on(lsp::run_lsp_server());
         return ExitCode::from(exit::OK);
+    }
+
+    if let Some(Command::Secrets {
+        history,
+        since,
+        max_commits,
+        path,
+    }) = &cli.command
+    {
+        let code = match run_secrets_subcommand(
+            *history,
+            since.clone(),
+            *max_commits,
+            path.clone(),
+            cli.effective_format(),
+            cli.output.clone(),
+            cli.min_severity,
+            cli.min_confidence,
+        ) {
+            Ok(c) => c,
+            Err(err) => {
+                let report: miette::Report = err.into();
+                eprintln!("{report:?}");
+                exit::RUNTIME_ERROR
+            }
+        };
+        return ExitCode::from(code);
     }
 
     match run(cli) {
@@ -302,6 +334,43 @@ fn resolve_fail_threshold(cli: &Cli, config: &Config) -> Option<Severity> {
         Some(FailOn::AtOrAbove(sev)) => Some(sev),
         None => Some(cli.min_severity),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_secrets_subcommand(
+    history: bool,
+    since: Option<String>,
+    max_commits: Option<usize>,
+    path: std::path::PathBuf,
+    format: OutputFormat,
+    output: Option<std::path::PathBuf>,
+    min_severity: Severity,
+    min_confidence: cli::Confidence,
+) -> Result<u8, AppError> {
+    if !history {
+        eprintln!("`rastray secrets` currently requires --history; for a working-tree scan use `rastray <path>`");
+        return Ok(exit::RUNTIME_ERROR);
+    }
+
+    let opts = history::HistoryScanOptions { since, max_commits };
+    let result = history::scan_history(&path, &opts)?;
+
+    let mut report = Report::new();
+    for f in result.findings {
+        report.push(f);
+    }
+    report.stats.files_scanned = result.stats.blobs_scanned;
+
+    report.apply_min_severity(min_severity);
+    report.apply_min_confidence(min_confidence);
+
+    report.render(format, output.as_deref())?;
+
+    Ok(if report.findings.is_empty() {
+        exit::OK
+    } else {
+        exit::FINDINGS
+    })
 }
 
 #[cfg(test)]

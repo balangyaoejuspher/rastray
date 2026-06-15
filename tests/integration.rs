@@ -169,6 +169,79 @@ fn scan_with_no_secrets_produces_zero_findings() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+fn run_git_in(dir: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[test]
+fn secrets_history_detects_blob_purged_from_working_tree() {
+    let dir = match make_fixture("history") {
+        Some(d) => d,
+        None => return,
+    };
+    if !run_git_in(&dir, &["init", "-q", "-b", "main"]) {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    if !write_file(&dir, "leaked.env", "AWS_KEY=AKIAIOSFODNN7EXAMPLE\n") {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    run_git_in(&dir, &["add", "leaked.env"]);
+    if !run_git_in(&dir, &["commit", "-q", "-m", "add secret"]) {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    run_git_in(&dir, &["rm", "-q", "leaked.env"]);
+    run_git_in(&dir, &["commit", "-q", "-m", "remove secret"]);
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let output = Command::new(&bin)
+        .arg("secrets")
+        .arg("--history")
+        .arg(&dir)
+        .arg("--json")
+        .arg("--min-severity")
+        .arg("info")
+        .output();
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = match serde_json::from_str(&stdout) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    let aws_hits = count_findings_with_code(&json, "RSTR-SEC-001");
+    assert!(
+        aws_hits >= 1,
+        "expected RSTR-SEC-001 to fire on the purged blob, got {aws_hits}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 fn run_exit_code(dir: &Path, extra_args: &[&str]) -> Option<i32> {
     let bin = binary_path();
     if !bin.exists() {
