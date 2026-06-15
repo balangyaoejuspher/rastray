@@ -10,9 +10,21 @@
 
 > Blazing-fast static analysis CLI for security, dependency, and performance audits.
 
-`rastray` is a single-binary, Rust-native command-line scanner that walks a project tree in parallel and runs a registry of pluggable analyzers against it — looking for hard-coded secrets, vulnerable or out-of-date dependencies, and hot-path performance smells. It is designed to be **fast enough to run in pre-commit hooks** and **strict enough to gate CI pipelines**.
+`rastray` is a single-binary, Rust-native command-line scanner that walks a project tree in parallel and runs a registry of pluggable analyzers against it — looking for hard-coded secrets, vulnerable or out-of-date dependencies, common OWASP-top-10 bug shapes (SSRF, XSS, open-redirect, SSTI, XXE, NoSQL injection, path traversal, command injection, broken crypto, GHA / IaC misconfig, unsafe deserialization, plaintext network endpoints), and hot-path performance smells. It is designed to be **fast enough to run in pre-commit hooks** and **strict enough to gate CI pipelines**.
 
-It is **not** another lint wrapper. `rastray` carries its own crawler, its own diagnostic renderer (powered by [`miette`](https://crates.io/crates/miette)), and emits both human-friendly terminal output and machine-readable JSON from the same engine.
+It is **not** another lint wrapper. `rastray` carries its own crawler, its own diagnostic renderer (powered by [`miette`](https://crates.io/crates/miette)), and emits human, JSON, SARIF, GitHub Actions, Markdown, HTML, CycloneDX, and SPDX output from the same engine.
+
+### What rastray is, and what it isn't
+
+`rastray` runs **deterministic pattern checks** — three tiers:
+
+1. **Regex sinks** (most security rules) — fast linear-time pattern matching with no lookarounds.
+2. **Lockfile vulnerability scans** (`RSTR-DEP-*`) — parse `Cargo.lock`, `package-lock.json`, `requirements.txt`, etc. and cross-reference against the [OSV.dev](https://osv.dev) advisory database.
+3. **Tree-sitter AST queries** (most performance rules) — structural matches against parsed source trees.
+
+It **deliberately does not** do multi-step taint flow analysis. Every security rule requires the user-controlled value to appear **directly** in the sink call (e.g. `fetch(req.body.url)` is flagged; `const u = req.body.url; fetch(u);` is not). That's what [CodeQL](https://codeql.github.com/) and [Semgrep Pro](https://semgrep.dev/products/semgrep-code/) do, and those products are paid / commercial. `rastray` catches the common 80% where the dangerous value is right there in the call, with no AI, no inference, and no false-positive guesswork. For the remaining 20%, reach for one of those tools.
+
+No LLM. No telemetry. No network access at scan time (OSV lookups are opt-in and cacheable). One binary. Free.
 
 ---
 
@@ -52,19 +64,30 @@ Both installers honor `RASTRAY_VERSION` (e.g. `0.1.0`) and
 `RASTRAY_INSTALL_DIR`. See [`install/README.md`](install/README.md) for
 details.
 
-### From crates.io
+> The prebuilt installer is the recommended path because the
+> downloaded binary is statically linked — **no Rust toolchain, no C
+> compiler, no system dependencies required**. The other install
+> options below all compile from source and need the prerequisites
+> listed.
 
-```sh
-cargo install rastray --locked
-```
-
-### Prerequisites _(for source builds)_
+### Prerequisites _(only required for source builds — including `cargo install`)_
 
 - **Rust** 1.86.0 or newer (`rustup default stable`)
 - A working C/C++ toolchain for linking:
   - Windows → **Visual Studio Build Tools** with the _Desktop development with C++_ workload (provides `link.exe`)
   - macOS → Xcode Command Line Tools (`xcode-select --install`)
   - Linux → `build-essential` / `gcc` + `pkg-config`
+
+### From crates.io
+
+```sh
+cargo install rastray --locked
+```
+
+> `cargo install` compiles `rastray` from source on your machine, so
+> the [Prerequisites](#prerequisites-only-required-for-source-builds--including-cargo-install)
+> above apply. If you don't already have the Rust toolchain and a C
+> linker installed, prefer the prebuilt-binary installer above.
 
 ### From source
 
@@ -278,23 +301,61 @@ rastray --min-severity high || exit $?
                   │ crawler.rs │   ignore::WalkBuilder + mpsc aggregator
                   └─────┬──────┘
                         │ CrawlSummary
-                  ┌─────▼──────┐
-                  │  modules/  │   Analyzer trait registry
-                  │  secrets   │
-                  │  deps      │
-                  │  perf      │
-                  └─────┬──────┘
+                  ┌─────▼──────────────────────────────────────────┐
+                  │  modules/                                       │
+                  │    Security:  secrets, crypto, injection,       │
+                  │               network, gha, iac,                │
+                  │               deserialization, path_traversal,  │
+                  │               ssrf, xss, open_redirect,         │
+                  │               ssti, xxe, nosqli                 │
+                  │    Deps:      dependencies (OSV.dev)            │
+                  │    Perf:      performance (tree-sitter)         │
+                  └─────┬──────────────────────────────────────────┘
                         │ Vec<Finding>
                   ┌─────▼──────┐
-                  │ reporter.rs│   Human (miette) | JSON (serde)
+                  │ reporter.rs│   human | json | sarif | markdown |
+                  │            │   html  | gh-actions | cyclonedx |
+                  │            │   spdx-json
                   └────────────┘
 ```
 
 - **`main.rs`** — orchestrator. Installs the `miette` hook, parses CLI, runs the crawler, dispatches analyzers, applies severity filtering, renders, returns `ExitCode`.
 - **`cli.rs`** — `clap` derive structs (`Cli`, `Severity`, `OutputFormat`). Handles `--json` / `--format` reconciliation.
 - **`crawler.rs`** — parallel filesystem walk. Hard-blocks noise dirs (`.git`, `node_modules`, `target`, `dist`, `build`, `.venv`, `venv`, `__pycache__`) and minified files (`*.min.js`, `*.bundle.css`, plus any JS/TS/CSS whose first 8 KB averages over 500 chars per line). Classifies each remaining entry as `Manifest | Source | Config | Other`.
-- **`reporter.rs`** — `Finding`, `Location`, `Report`. Dual renderer: `miette::Diagnostic` for humans, `serde_json::to_string_pretty` for machines. Source spans are read lazily and degrade gracefully on I/O errors.
-- **`modules/`** — analyzer trait + registry. New analyzers implement `Analyzer` and are appended to `default_registry()`.
+- **`reporter.rs`** — `Finding`, `Location`, `Report`. Multi-format renderer: `miette::Diagnostic` for humans, plus JSON, SARIF, Markdown, HTML, GitHub Actions annotations, CycloneDX SBOM, and SPDX SBOM. Source spans are read lazily and degrade gracefully on I/O errors.
+- **`modules/`** — `Analyzer` trait + registry. Three tiers: regex sinks (most security rules), lockfile parsing + OSV.dev (`RSTR-DEP-*`), and tree-sitter AST queries (most `RSTR-PERF-*`). New analyzers implement `Analyzer` and are appended to `default_registry()`.
+
+### Rule families
+
+Every finding has a stable `RSTR-<FAMILY>-<NNN>` code. Use these in
+`.rastray.toml` to disable or re-tune individual rules:
+
+| Family | Module | What it catches |
+|---|---|---|
+| `RSTR-SEC-*` | `secrets` | High-entropy hard-coded credentials, AWS / GitHub / Stripe / OpenAI token patterns. |
+| `RSTR-CRY-*` | `crypto` | Broken algorithms (`md5`, `sha1`, DES, ECB mode), weak RNG (`Math.random`, `random.random` for security). |
+| `RSTR-INJ-*` | `injection` | SQL injection via f-strings / template literals, `shell=True` in `subprocess`, `eval(user_input)`, `sh -c <user_cmd>`. |
+| `RSTR-NET-*` | `network` | Plaintext `http://` endpoints in code, disabled TLS verification (`verify=False`, `rejectUnauthorized: false`). |
+| `RSTR-GHA-*` | `gha` | GitHub Actions misconfig: unpinned actions, missing `permissions:`, write tokens. |
+| `RSTR-IAC-*` | `iac` | Terraform / Dockerfile / k8s misconfig (root user, `:latest`, public S3 buckets, missing limits). |
+| `RSTR-DES-*` | `deserialization` | `pickle.loads(user_input)`, `yaml.load` without `SafeLoader`, Java `ObjectInputStream` on untrusted data. |
+| `RSTR-PTH-*` | `path_traversal` | `open(user_input)` / `fs.readFile(req.body.path)` without normalization. |
+| `RSTR-SSRF-*` | `ssrf` | `fetch(req.body.url)`, `requests.get(request.args.get('u'))`, `http.Get(r.FormValue(...))`. |
+| `RSTR-XSS-*` | `xss` | Reflected XSS (Express, Flask, Go `fmt.Fprintf`) and DOM XSS (`innerHTML = location.hash`). |
+| `RSTR-RDR-*` | `open_redirect` | `res.redirect(req.query.next)`, Flask / Django `redirect(request.args.get(...))`. |
+| `RSTR-SSTI-*` | `ssti` | `render_template_string(req.body)`, `pug.render(req.body)`, `Handlebars.compile(req.body)`. |
+| `RSTR-XXE-*` | `xxe` | Python stdlib `xml.etree`, `lxml.etree.XMLParser(resolve_entities=True)`, Java `DocumentBuilderFactory` without hardening, `libxmljs.parseXml(..., {noent: true})`. |
+| `RSTR-NOSQLI-*` | `nosqli` | MongoDB operator injection (`users.find({ user: req.body.user })`), Mongo `$where` with request input (Critical — RCE in the database process). |
+| `RSTR-DEP-*` | `dependencies` | Known-vulnerable packages in `Cargo.lock`, `package-lock.json`, `requirements.txt`, `poetry.lock`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, `packages.lock.json`, `Package.resolved`, `pubspec.lock`, `mix.lock`, Gradle / Maven, `go.sum`. Cross-referenced against [OSV.dev](https://osv.dev). |
+| `RSTR-PERF-*` | `performance` | Tree-sitter AST checks: `String += in loop`, redundant `Vec::clone`, allocations inside hot loops. |
+
+Every security finding follows the **captured-call-site message
+convention**: the matched call is interpolated into the message body so
+200 findings in a report produce 200 distinguishable lines, not 200
+copies of the same warning. Help text embeds the idiomatic remediation
+snippet per language and framework (e.g. `defusedxml` for Python XXE,
+`html.EscapeString` for Go XSS, `String(req.body.user)` coercion for
+Mongo).
 
 ### Adding a new analyzer
 
