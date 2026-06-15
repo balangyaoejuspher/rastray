@@ -329,6 +329,8 @@ const CONFIG_EXTENSIONS: &[&str] = &[
     "cfg",
     "properties",
     "xml",
+    "tf",
+    "tfvars",
 ];
 
 const NOISE_DIRECTORIES: &[&str] = &[
