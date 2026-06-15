@@ -86,6 +86,7 @@ struct CompiledPattern {
 const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const PY_EXTENSIONS: &[&str] = &["py"];
 const GO_EXTENSIONS: &[&str] = &["go"];
+const PHP_EXTENSIONS: &[&str] = &["php"];
 
 const TRAILER_REFLECTED: &str = "writes request input into the HTTP response — reflected XSS risk";
 const TRAILER_DOM_INNER_HTML: &str =
@@ -100,6 +101,8 @@ const HELP_JS_DOM: &str = "use `.textContent` instead of `.innerHTML`, or saniti
 const HELP_PY: &str = "render via an auto-escaping template (Jinja2 with `autoescape=True`) or HTML-escape with `markupsafe.escape(...)`; never return `request.args.get(...)` / `request.form[...]` raw and never wrap user input in `Markup(...)`";
 
 const HELP_GO: &str = "HTML-escape with `html.EscapeString(...)` or render via `html/template`; never write `r.FormValue(...)` / `r.URL.Query().Get(...)` raw into the response";
+
+const HELP_PHP: &str = "HTML-escape with `htmlspecialchars($x, ENT_QUOTES, 'UTF-8')` before echo/print; never write `$_GET[...]` / `$_POST[...]` / `$_REQUEST[...]` raw into the response";
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -157,6 +160,22 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         help: HELP_GO,
         pattern: r"\bio\.WriteString\s*\(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*\.(?:FormValue|PostFormValue|URL\.Query\(\)\.Get)\s*\([^)]+\)",
         extensions: GO_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-XSS-006",
+        trailer: TRAILER_REFLECTED,
+        severity: Severity::High,
+        help: HELP_PHP,
+        pattern: r#"\b(?:echo|print)\s+[^(;]*\$_(?:GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-XSS-006",
+        trailer: TRAILER_REFLECTED,
+        severity: Severity::High,
+        help: HELP_PHP,
+        pattern: r#"<\?=\s*\$_(?:GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
     },
 ];
 
@@ -440,5 +459,37 @@ mod tests {
         let raw = "res.send(req.body.html,";
         let out = trim_match(raw);
         assert_eq!(out, "res.send(req.body.html)");
+    }
+
+    #[test]
+    fn php_echo_request_input_matches() {
+        let body = r#"<?php echo $_GET['name']; ?>"#;
+        let findings = run_on("a.php", body);
+        assert!(findings.iter().any(|f| f.code == "RSTR-XSS-006"));
+    }
+
+    #[test]
+    fn php_print_request_input_matches() {
+        let body = r#"<?php print "Hello " . $_POST['name']; ?>"#;
+        let findings = run_on("a.php", body);
+        assert!(findings.iter().any(|f| f.code == "RSTR-XSS-006"));
+    }
+
+    #[test]
+    fn php_short_echo_request_input_matches() {
+        let body = r#"<p><?= $_REQUEST['msg'] ?></p>"#;
+        let findings = run_on("a.php", body);
+        assert!(findings.iter().any(|f| f.code == "RSTR-XSS-006"));
+    }
+
+    #[test]
+    fn php_echo_with_htmlspecialchars_not_flagged() {
+        let body = r#"<?php echo htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8'); ?>"#;
+        let findings = run_on("a.php", body);
+        let xss006 = findings.iter().any(|f| f.code == "RSTR-XSS-006");
+        assert!(
+            !xss006,
+            "should not flag echo when htmlspecialchars is the only request-superglobal reference on the line"
+        );
     }
 }

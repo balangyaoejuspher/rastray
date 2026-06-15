@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **PHP rule coverage broadened** with five new direct-superglobal
+  patterns covering the OWASP-Top-Ten cases that account for most
+  real-world PHP findings:
+  - `RSTR-INJ-006` (`Critical`) — SQL injection via `mysqli_query` /
+    `pg_query` / `$pdo->query()` with `$_GET[...]` / `$_POST[...]` /
+    `$_REQUEST[...]` interpolated.
+  - `RSTR-INJ-007` (`Critical`) — command exec via `exec` / `system` /
+    `shell_exec` / `passthru` / backticks on a request superglobal.
+  - `RSTR-XSS-006` (`High`) — `echo` / `print` / short-echo `<?=`
+    of a request superglobal without `htmlspecialchars`.
+  - `RSTR-PTH-005` (`Critical`) — `include` / `require` / `_once`
+    with a request superglobal (LFI / RFI).
+  - `RSTR-PTH-006` (`High`) — `file_get_contents` / `fopen` /
+    `readfile` / `file_put_contents` with a request superglobal.
+
+  All five are direct-sink matches — the superglobal must appear in
+  the same call expression. The conservative one-step taint scope
+  is consistent with the rest of rastray; multi-step flow remains
+  out of scope.
+
+  Eight new unit tests cover the patterns and the
+  `htmlspecialchars`-wrapped negative case. Five new docs pages
+  follow the established template (Summary / Severity / Languages /
+  What rastray flags / What rastray deliberately does *not* flag /
+  How to fix / References).
+
+  The DVWA benchmark page is updated to explain that DVWA's
+  pedagogical assign-then-use idiom does not trigger the new
+  rules, and to demonstrate the direct-sink pattern they do catch.
+
 ## [0.9.0] - 2026-06-15
 
 ### Added

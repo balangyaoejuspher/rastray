@@ -19,25 +19,50 @@
 |----------------|------:|------------------|
 | `RSTR-INJ-003` |     5 | PHP `eval` |
 
-## Honest observation: rastray's PHP coverage is the weakest
+## Honest observation: DVWA is essentially-indirect
 
-rastray currently ships these PHP-aware rules:
+rastray ships PHP-aware rules for SQL injection, command exec,
+echo / print of request input, include / require LFI, and file
+API LFI:
 
-- `RSTR-INJ-003` (eval / assert with dynamic args)
-- `RSTR-DES-007` (PHP `unserialize`)
-- `RSTR-SEC-*` (generic secret patterns, language-agnostic)
+- [`RSTR-INJ-006`](../rules/RSTR-INJ-006.md) — SQLi via superglobal in the query
+- [`RSTR-INJ-007`](../rules/RSTR-INJ-007.md) — command exec on superglobal
+- [`RSTR-XSS-006`](../rules/RSTR-XSS-006.md) — echo / print of superglobal
+- [`RSTR-PTH-005`](../rules/RSTR-PTH-005.md) — include / require from superglobal
+- [`RSTR-PTH-006`](../rules/RSTR-PTH-006.md) — file API on superglobal
 
-That is much narrower than its Node / Python / Java surfaces.
-Semgrep's `p/owasp-top-ten` registry has a richer PHP rule pack
-and reports 45 findings against DVWA — that 9× gap is real, and
-PHP-heavy projects today are better served by Semgrep until
-rastray's PHP family grows.
+None of them fire on DVWA. DVWA's pedagogical style assigns the
+superglobal to a local first, then uses the local — a single
+indirection that rastray deliberately does not chase (the same
+one-step taint scope every other rastray rule uses). For example,
+DVWA's SQLi-low source reads:
 
-## What's tracked
+```php
+$id = $_REQUEST['id'];
+$query = "SELECT first_name, last_name FROM users WHERE user_id = '$id';";
+$result = mysqli_query($GLOBALS["___mysqli_ston"], $query);
+```
 
-[PLAN.md Phase 11](https://github.com/balangyaoejuspher/rastray/blob/main/PLAN.md)
-notes broadening PHP rules (SQLi, XSS, file upload) as a future
-slice.
+rastray flags neither line in isolation — there's no superglobal in
+the `mysqli_query` call, no concatenation in the assignment. The
+two-line idiom is below the rule's threshold by design.
+
+The same five PHP rules fire correctly on the **direct** pattern
+common in real PHP code:
+
+```php
+$rows = mysqli_query($db, "SELECT * FROM u WHERE id = " . $_GET['id']);
+exec("ping " . $_POST['host']);
+echo $_GET['name'];
+include $_REQUEST['page'] . ".php";
+$x = file_get_contents($_GET['url']);
+```
+
+Semgrep's `p/owasp-top-ten` registry includes PHP rules that span
+the assign-then-use boundary, which is why it reports 45 on DVWA.
+For codebases that match DVWA's idiom rather than rastray's
+direct-sink scope, Semgrep is the better fit; for codebases where
+the superglobal appears in the sink, rastray is faster.
 
 ## Reproduce
 

@@ -42,6 +42,8 @@
 - [RSTR-INJ-003 — eval / exec / new Function](./rules/RSTR-INJ-003.md)
 - [RSTR-INJ-004 — Node child_process.exec with template literal](./rules/RSTR-INJ-004.md)
 - [RSTR-INJ-005 — Go exec.Command with sh -c](./rules/RSTR-INJ-005.md)
+- [RSTR-INJ-006 — PHP SQL query built from request superglobal](./rules/RSTR-INJ-006.md)
+- [RSTR-INJ-007 — PHP command exec on request superglobal](./rules/RSTR-INJ-007.md)
 
 # Server-side request forgery
 
@@ -57,6 +59,7 @@
 - [RSTR-XSS-003 — document.write with DOM data](./rules/RSTR-XSS-003.md)
 - [RSTR-XSS-004 — Flask Markup / direct return of request input](./rules/RSTR-XSS-004.md)
 - [RSTR-XSS-005 — Go HTTP response writes with request input](./rules/RSTR-XSS-005.md)
+- [RSTR-XSS-006 — PHP echo / print of request superglobal](./rules/RSTR-XSS-006.md)
 
 # JSON-Web-Token misuse
 
@@ -107,6 +110,8 @@
 - [RSTR-PTH-002 — Express sendFile / fs read with request input](./rules/RSTR-PTH-002.md)
 - [RSTR-PTH-003 — Java new File(servletRequest...)](./rules/RSTR-PTH-003.md)
 - [RSTR-PTH-004 — literal ../../ in source](./rules/RSTR-PTH-004.md)
+- [RSTR-PTH-005 — PHP include/require from request superglobal](./rules/RSTR-PTH-005.md)
+- [RSTR-PTH-006 — PHP file API on request superglobal](./rules/RSTR-PTH-006.md)
 
 # Web-app configuration
 

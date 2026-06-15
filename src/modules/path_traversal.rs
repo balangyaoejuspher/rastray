@@ -94,6 +94,7 @@ struct CompiledPattern {
 const PY_EXTENSIONS: &[&str] = &["py"];
 const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const JAVA_EXTENSIONS: &[&str] = &["java", "kt", "kts"];
+const PHP_EXTENSIONS: &[&str] = &["php"];
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -137,6 +138,22 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         extensions: &[
             "py", "js", "jsx", "ts", "tsx", "mjs", "cjs", "go", "rs", "java", "kt", "rb", "php",
         ],
+    },
+    PatternSpec {
+        code: "RSTR-PTH-005",
+        message: "PHP include/require fed by a request superglobal; local-file-inclusion (LFI) / remote-file-inclusion (RFI) risk",
+        severity: Severity::Critical,
+        help: "never include() a path built from $_GET / $_POST / $_REQUEST; map the request value through an allow-list (e.g. ['home' => '/var/app/views/home.php']) before include",
+        pattern: r#"(?i)\b(?:include|include_once|require|require_once)\s*\(?\s*[^;)]*\$_(GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-PTH-006",
+        message: "PHP file API called with a request superglobal; path-traversal risk",
+        severity: Severity::High,
+        help: "join the basename(...) of the input onto a fixed safe directory and verify realpath(...) stays inside it before opening",
+        pattern: r#"(?i)\b(?:file_get_contents|file_put_contents|fopen|readfile|fpassthru|file)\s*\([^)]*\$_(GET|POST|REQUEST|COOKIE)\b"#,
+        extensions: PHP_EXTENSIONS,
     },
 ];
 
@@ -328,5 +345,37 @@ mod tests {
             return;
         };
         assert_eq!(spec.severity, Severity::Info);
+    }
+
+    #[test]
+    fn php_include_with_request_superglobal_matches() {
+        let Ok(patterns) = compiled_patterns() else {
+            return;
+        };
+        let re = patterns
+            .iter()
+            .find(|p| p.code == "RSTR-PTH-005")
+            .map(|p| &p.regex);
+        let Some(re) = re else { return };
+        assert!(re.is_match(r#"include $_GET['page'] . ".php";"#));
+        assert!(re.is_match(r#"include_once($_REQUEST['mod']);"#));
+        assert!(re.is_match(r#"require "/var/app/" . $_POST['view'];"#));
+        assert!(!re.is_match(r#"include 'views/home.php';"#));
+    }
+
+    #[test]
+    fn php_file_get_contents_with_request_superglobal_matches() {
+        let Ok(patterns) = compiled_patterns() else {
+            return;
+        };
+        let re = patterns
+            .iter()
+            .find(|p| p.code == "RSTR-PTH-006")
+            .map(|p| &p.regex);
+        let Some(re) = re else { return };
+        assert!(re.is_match(r#"$content = file_get_contents($_GET['url']);"#));
+        assert!(re.is_match(r#"$fp = fopen($_POST['file'], 'r');"#));
+        assert!(re.is_match(r#"readfile($_REQUEST['path']);"#));
+        assert!(!re.is_match(r#"file_get_contents('/etc/myapp/config.json');"#));
     }
 }
