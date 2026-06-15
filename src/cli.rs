@@ -137,6 +137,9 @@ pub struct Cli {
     #[arg(long = "no-cache", default_value_t = false)]
     pub no_cache: bool,
 
+    #[arg(long = "no-default-skip", default_value_t = false)]
+    pub no_default_skip: bool,
+
     #[arg(long = "no-ignore", default_value_t = false)]
     pub no_ignore: bool,
 

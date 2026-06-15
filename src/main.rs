@@ -215,10 +215,60 @@ fn populate_stats(report: &mut Report, crawl: &CrawlSummary) {
 fn run_analyzers(cli: &Cli, config: &Config, crawl: &CrawlSummary, report: &mut Report) {
     for analyzer in default_registry(cli, config) {
         match analyzer.analyze(crawl) {
-            Ok(findings) => report.extend(findings),
+            Ok(findings) => {
+                let kept = findings
+                    .into_iter()
+                    .filter(|f| cli.no_default_skip || !is_default_noise(f));
+                report.extend(kept);
+            }
             Err(err) => report.push(analyzer_error_finding(analyzer.as_ref(), err)),
         }
     }
+}
+
+const NOISY_IN_TEST_PATHS: &[&str] = &["RSTR-SEC-007", "RSTR-SEC-006"];
+
+const TEST_PATH_SEGMENTS: &[&str] = &[
+    "tests",
+    "test",
+    "unittests",
+    "unittest",
+    "spec",
+    "specs",
+    "__tests__",
+    "fixtures",
+    "fixture",
+    "samples",
+    "sample",
+    "examples",
+    "example",
+    "testdata",
+    "test-fixtures",
+    "test_fixtures",
+];
+
+fn is_default_noise(finding: &Finding) -> bool {
+    if !NOISY_IN_TEST_PATHS.contains(&finding.code.as_str()) {
+        return false;
+    }
+    let Some(location) = &finding.location else {
+        return false;
+    };
+    looks_like_test_path(&location.file)
+}
+
+fn looks_like_test_path(path: &std::path::Path) -> bool {
+    for component in path.components() {
+        if let std::path::Component::Normal(name) = component {
+            if let Some(s) = name.to_str() {
+                let lower = s.to_ascii_lowercase();
+                if TEST_PATH_SEGMENTS.iter().any(|seg| *seg == lower) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn analyzer_error_finding(analyzer: &(dyn Analyzer + Send + Sync), err: AnalyzerError) -> Finding {
@@ -250,5 +300,47 @@ fn resolve_fail_threshold(cli: &Cli, config: &Config) -> Option<Severity> {
         Some(FailOn::Never) => None,
         Some(FailOn::AtOrAbove(sev)) => Some(sev),
         None => Some(cli.min_severity),
+    }
+}
+
+#[cfg(test)]
+mod default_skip_tests {
+    use super::*;
+    use crate::reporter::Location;
+    use std::path::PathBuf;
+
+    fn finding_with(code: &str, path: &str) -> Finding {
+        Finding::new(code, "msg", Severity::High, Category::Security)
+            .with_location(Location::file(PathBuf::from(path)))
+    }
+
+    #[test]
+    fn sec_007_in_fixtures_is_skipped() {
+        let f = finding_with("RSTR-SEC-007", "/repo/tests/fixtures/private-key.pem");
+        assert!(is_default_noise(&f));
+    }
+
+    #[test]
+    fn sec_007_in_repo_root_is_not_skipped() {
+        let f = finding_with("RSTR-SEC-007", "/repo/secrets.pem");
+        assert!(!is_default_noise(&f));
+    }
+
+    #[test]
+    fn unrelated_rule_is_never_skipped() {
+        let f = finding_with("RSTR-INJ-001", "/repo/tests/test_sqli.py");
+        assert!(!is_default_noise(&f));
+    }
+
+    #[test]
+    fn finding_without_location_is_not_skipped() {
+        let f = Finding::new("RSTR-SEC-007", "msg", Severity::High, Category::Security);
+        assert!(!is_default_noise(&f));
+    }
+
+    #[test]
+    fn sec_007_in_unittests_is_skipped() {
+        let f = finding_with("RSTR-SEC-007", "/repo/unittests/scans/sample.pem");
+        assert!(is_default_noise(&f));
     }
 }

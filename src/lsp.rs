@@ -295,6 +295,7 @@ impl Cli {
             fix_yes: false,
             offline: true,
             no_cache: true,
+            no_default_skip: false,
             no_ignore: false,
             include_hidden: false,
             follow_links: false,
