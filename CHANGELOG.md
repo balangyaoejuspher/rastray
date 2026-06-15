@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`--fix` mode** — opt-in safe-substitution auto-fix for
+  a curated set of rules that have a 1:1 mechanical
+  remediation. `rastray --fix` (no apply) prints a unified
+  diff of every planned change without touching the
+  filesystem; `rastray --fix --yes` writes the changes
+  back to disk and prints `fixed` lines per substitution.
+  Findings without a registered fixer (i.e. the SSRF / XSS
+  / SSTI / XXE / NoSQLi / open-redirect families and most
+  other rules) are silently skipped — auto-fix is
+  deliberately limited to fixes that can be done safely
+  with a single line-level string substitution.
+
+  Initial fixer set (more can land per-rule without an
+  architecture change):
+
+  - `RSTR-DES-002` (Python) — `yaml.load(` → `yaml.safe_load(`
+  - `RSTR-CRY-001` — MD5 hash construction → SHA-256
+    across Python (`hashlib.md5`), Node
+    (`crypto.createHash('md5')` / `"md5"`), Java
+    (`MessageDigest.getInstance("MD5"`), and Go
+    (`md5.New()`, `"crypto/md5"` imports)
+  - `RSTR-CRY-002` — SHA-1 hash construction → SHA-256
+    across the same four ecosystems
+    (`hashlib.sha1`, `createHash('sha1')`,
+    `MessageDigest.getInstance("SHA-1"` and `"SHA1"`,
+    `sha1.New()`, `"crypto/sha1"` imports)
+
+  Rules that need multi-line refactoring (`verify=False`
+  removal, `Math.random()` replacement,
+  `actions/checkout@v4` SHA pinning) are deliberately not
+  in this slice — they require parsing the surrounding
+  call to keep argument lists / variable references
+  correct, which is taint-analysis territory and out of
+  scope. Add them later, one per follow-up slice, only
+  once we have an AST rewriter that can guarantee the
+  result still compiles.
+
+  CLI flags are mutually compatible with all existing
+  ones — `--fix` works alongside `--since`, `--baseline`,
+  `--include-minified`, etc. — and short-circuits the
+  normal report rendering: when `--fix` is on, only the
+  preview / applied lines are printed.
+
 ## [0.5.0] - 2026-06-15
 
 ### Added

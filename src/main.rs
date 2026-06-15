@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod autofix;
 mod baseline;
 mod cli;
 mod config;
@@ -16,6 +17,9 @@ use std::process::ExitCode;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::autofix::{
+    plan_and_apply as autofix_apply, print_previews as autofix_print, AutoFixError,
+};
 use crate::baseline::{Baseline, BaselineError};
 use crate::cli::{Cli, Command, FailOn, OutputFormat, Severity};
 use crate::config::{Config, ConfigError};
@@ -52,6 +56,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::sbom))]
     Sbom(#[from] SbomError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::autofix))]
+    AutoFix(#[from] AutoFixError),
 }
 
 mod exit {
@@ -168,6 +176,12 @@ fn run(cli: Cli) -> Result<u8, AppError> {
     if let Some(path) = &cli.baseline {
         let baseline = Baseline::load(path)?;
         baseline.apply(&mut report.findings);
+    }
+
+    if cli.fix {
+        let outcome = autofix_apply(&report.findings, &cli.path, cli.fix_yes)?;
+        autofix_print(&outcome, cli.fix_yes);
+        return Ok(exit::OK);
     }
 
     report.apply_min_severity(min_severity);
