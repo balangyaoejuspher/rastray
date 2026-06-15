@@ -13,7 +13,7 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::cli::{Cli, Severity};
+use crate::cli::{Cli, Confidence, Severity};
 use crate::config::Config;
 use crate::crawler::{CrawlSummary, DiscoveredFile, FileKind};
 use crate::modules::{default_registry, Analyzer};
@@ -280,6 +280,7 @@ impl Cli {
         Self {
             path: PathBuf::from("."),
             min_severity: Severity::Info,
+            min_confidence: Confidence::Low,
             json: false,
             format: None,
             output: None,
