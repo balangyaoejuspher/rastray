@@ -38,6 +38,8 @@ Most security/dep/perf tools in the polyglot world fall into one of three bucket
 
 `rastray` aims to be the **fourth option**: one offline binary, one config-free invocation, polyglot from day one, and aggressively fast because it is built on `ignore::WalkBuilder` (the engine that powers `ripgrep`) plus a `tokio` runtime for network-bound advisory lookups.
 
+See [`BENCHMARKS.md`](BENCHMARKS.md) for a side-by-side comparison against Semgrep, bandit, gosec, gitleaks, and eslint-plugin-security on six known-vulnerable codebases. rastray runs 10×–156× faster than Semgrep at OWASP-Top-Ten coverage on every target tested.
+
 ---
 
 ## Installation

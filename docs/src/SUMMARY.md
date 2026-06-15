@@ -3,6 +3,17 @@
 - [Introduction](./introduction.md)
 - [How to read these pages](./how-to-read.md)
 
+# Benchmarks
+
+- [Methodology](./benchmarks/methodology.md)
+- [Summary table](./benchmarks/summary.md)
+- [OWASP Juice Shop](./benchmarks/juice-shop.md)
+- [OWASP NodeGoat](./benchmarks/nodegoat.md)
+- [DVWA](./benchmarks/dvwa.md)
+- [OWASP RailsGoat](./benchmarks/railsgoat.md)
+- [WebGoat](./benchmarks/webgoat.md)
+- [django-DefectDojo](./benchmarks/django-defectdojo.md)
+
 # Secrets in source
 
 - [RSTR-SEC-001 — hard-coded credential pattern](./rules/RSTR-SEC-001.md)

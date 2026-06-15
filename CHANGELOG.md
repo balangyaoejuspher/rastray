@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Benchmark chapter** on the docs site comparing rastray against
+  Semgrep, bandit, gosec, gitleaks, and eslint-plugin-security
+  across six known-vulnerable codebases (OWASP Juice Shop, NodeGoat,
+  DVWA, RailsGoat, WebGoat, django-DefectDojo). Methodology page,
+  consolidated summary, and per-target breakdowns live under
+  `docs/src/benchmarks/`; a top-level `BENCHMARKS.md` summarises and
+  links to the site.
+- **Reproducible benchmark harness** at
+  `scripts/benchmarks/run.ps1`. Runs every applicable tool against
+  every target, normalises results to a common schema, and writes
+  per-tool JSON outputs plus a consolidated `summary.json`.
+
 ## [0.8.0] - 2026-06-15
 
 ### Added
