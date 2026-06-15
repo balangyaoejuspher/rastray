@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Homebrew formula** at `dist/homebrew/rastray.rb` and **Scoop
+  manifest** at `dist/scoop/rastray.json`, both pinned to the
+  current release tag and downloading the same checksum-verified
+  release tarballs the shell installer uses. README "Installation"
+  section gains new Homebrew and Scoop sub-sections with direct-
+  install snippets that work today; dedicated tap / bucket repos
+  are queued as a follow-up. `dist/README.md` documents the layout
+  and the manual SHA-refresh procedure that the release PR runs.
+
 - **Docs Quickstart page** at `docs/src/quickstart.md` consolidating
   install (installer, cargo, Windows ps1), smoke-test, pre-commit
   integration, GitHub Actions integration, and editor (LSP) wiring

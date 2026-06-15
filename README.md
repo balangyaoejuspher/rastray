@@ -80,6 +80,34 @@ details.
   - macOS → Xcode Command Line Tools (`xcode-select --install`)
   - Linux → `build-essential` / `gcc` + `pkg-config`
 
+### Homebrew (macOS / Linux)
+
+A Homebrew formula is provided at
+[`dist/homebrew/rastray.rb`](dist/homebrew/rastray.rb). It downloads
+the same checksum-verified release tarball the shell installer uses,
+so no Rust toolchain is required.
+
+A dedicated tap repository will be published soon; until then,
+install directly from the formula file in this repo:
+
+```sh
+brew install --formula https://raw.githubusercontent.com/balangyaoejuspher/rastray/main/dist/homebrew/rastray.rb
+```
+
+### Scoop (Windows)
+
+A Scoop manifest is provided at
+[`dist/scoop/rastray.json`](dist/scoop/rastray.json). Same approach:
+downloads the release zip, verifies SHA256, drops `rastray.exe` on
+your `PATH`.
+
+A dedicated bucket repository will be published soon; until then,
+install directly from the manifest in this repo:
+
+```powershell
+scoop install https://raw.githubusercontent.com/balangyaoejuspher/rastray/main/dist/scoop/rastray.json
+```
+
 ### From crates.io
 
 ```sh
