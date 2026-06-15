@@ -4,6 +4,7 @@ pub mod deserialization;
 pub mod gha;
 pub mod iac;
 pub mod injection;
+pub mod jwt;
 pub mod network;
 pub mod nosqli;
 pub mod open_redirect;
@@ -51,6 +52,7 @@ pub fn default_registry(cli: &Cli) -> Vec<Box<dyn Analyzer + Send + Sync>> {
         Box::new(xxe::XxeAnalyzer::new()),
         Box::new(nosqli::NosqliAnalyzer::new()),
         Box::new(webapp_config::WebappConfigAnalyzer::new()),
+        Box::new(jwt::JwtAnalyzer::new()),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
             cli.offline,
             cli.no_cache,
