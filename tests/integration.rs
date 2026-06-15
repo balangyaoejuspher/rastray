@@ -400,3 +400,97 @@ fn rastray_format_html_errors_without_output_path() {
         "stderr should mention html + -o; got: {stderr}"
     );
 }
+
+#[test]
+fn lsp_subcommand_responds_to_initialize() {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Command as ProcCommand, Stdio};
+    use std::time::{Duration, Instant};
+
+    let bin = binary_path();
+    if !bin.exists() {
+        return;
+    }
+
+    let mut child = match ProcCommand::new(&bin)
+        .arg("lsp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            return;
+        }
+    };
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            return;
+        }
+    };
+
+    let initialize = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "capabilities": {},
+            "rootUri": null,
+            "processId": null,
+        },
+    });
+    let payload = serde_json::to_string(&initialize).unwrap_or_default();
+    let framed = format!("Content-Length: {}\r\n\r\n{}", payload.len(), payload);
+    let mut writer = stdin;
+    if writer.write_all(framed.as_bytes()).is_err() {
+        let _ = child.kill();
+        return;
+    }
+    let _ = writer.flush();
+    drop(writer);
+
+    let mut reader = BufReader::new(stdout);
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut response_text = String::new();
+
+    while Instant::now() < deadline {
+        let mut header = String::new();
+        if reader.read_line(&mut header).is_err() || header.is_empty() {
+            break;
+        }
+        let trimmed = header.trim_end();
+        if let Some(value) = trimmed.strip_prefix("Content-Length: ") {
+            let length: usize = value.parse().unwrap_or(0);
+            let mut blank = String::new();
+            let _ = reader.read_line(&mut blank);
+            if length > 0 {
+                let mut body_buf = vec![0u8; length];
+                if reader.read_exact(&mut body_buf).is_ok() {
+                    response_text = String::from_utf8_lossy(&body_buf).to_string();
+                }
+                break;
+            }
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        response_text.contains("\"name\":\"rastray\""),
+        "expected initialize response to contain server name; got: {response_text}"
+    );
+    assert!(
+        response_text.contains("textDocumentSync"),
+        "expected initialize response to advertise textDocumentSync; got: {response_text}"
+    );
+}

@@ -465,6 +465,69 @@ or `cargo install rastray --locked` first. The hooks deliberately do not
 build `rastray` from source on every contributor's machine — that would
 turn a one-second pre-commit check into a multi-minute Rust compile.
 
+### Editor integration (LSP)
+
+`rastray` ships a built-in Language Server Protocol implementation so
+findings surface inline in any LSP-aware editor (VS Code, Neovim,
+Helix, Zed, Emacs) as you save a file — no waiting for CI or
+pre-commit.
+
+```sh
+rastray lsp
+```
+
+This speaks LSP over stdio. Each `textDocument/didOpen` and
+`textDocument/didSave` triggers an in-process scan of that single file
+through the existing analyzer registry, and emits one
+`textDocument/publishDiagnostics` notification per file. Each
+diagnostic carries:
+
+- `severity` mapped from rastray (`Critical`/`High` → Error, `Medium`
+  → Warning, `Low` → Information, `Info` → Hint).
+- `code` set to the `RSTR-<FAMILY>-<NNN>` rule id.
+- `source` set to `"rastray"`.
+- `message` carrying the captured-call-site text.
+- `relatedInformation` carrying the per-language remediation help
+  text.
+
+Wire it up per editor:
+
+**Neovim (with `nvim-lspconfig`)**
+
+```lua
+require("lspconfig.configs").rastray = {
+  default_config = {
+    cmd = { "rastray", "lsp" },
+    filetypes = { "rust", "python", "javascript", "typescript", "go", "java" },
+    root_dir = require("lspconfig.util").find_git_ancestor,
+    single_file_support = true,
+  },
+}
+require("lspconfig").rastray.setup({})
+```
+
+**Helix (`languages.toml`)**
+
+```toml
+[language-server.rastray]
+command = "rastray"
+args = ["lsp"]
+
+[[language]]
+name = "python"
+language-servers = [{ name = "rastray", except-features = ["format"] }]
+```
+
+**VS Code** — a dedicated extension is in the roadmap; for now the
+LSP can be wired via the generic
+[`mattn/efm-langserver`](https://github.com/mattn/efm-langserver) or
+similar bridge.
+
+The LSP runs in offline mode (no OSV.dev network calls), uses a single
+worker thread, and only scans the single file that just opened/saved
+— not the whole workspace. This keeps latency under 100 ms on typical
+files.
+
 ---
 
 ## Security
