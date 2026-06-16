@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **C / C++ memory-safety rule family** broadens analyzer coverage
+  to a previously unsupported language pair. Five new rules covering
+  the OWASP-Top-25-style memory-safety bug shapes that account for
+  the bulk of real-world C / C++ CVE history:
+  - `RSTR-MEM-001` (`Critical`) — `strcpy` / `strcat` / `gets` /
+    `sprintf` / `vsprintf` (banned, unbounded buffer-overflow
+    surface).
+  - `RSTR-MEM-002` (`High`) — `scanf` / `fscanf` / `sscanf` (and
+    vararg variants) with an unbounded `%s` directive.
+  - `RSTR-MEM-003` (`High`) — `alloca(...)` (stack-overflow
+    primitive on attacker-controlled size).
+  - `RSTR-MEM-004` (`Medium`) — `memcpy` / `memmove` whose length
+    is `strlen(...)` without `+ 1` (off-by-one that drops the null
+    terminator).
+  - `RSTR-INJ-011` (`Critical`) — `system` / `popen` / `execlp` /
+    `execvp` / `execve` with a non-string-literal first argument
+    (command injection via shell metacharacter parsing).
+
+  All five run only against C/C++ source files (`.c`, `.cc`,
+  `.cpp`, `.cxx`, `.h`, `.hpp`, `.hh`, `.hxx`). Same conservative
+  one-step direct-sink scope as every other rastray rule — the
+  banned function or unsafe argument must appear literally at the
+  call site; multi-step taint flow remains out of scope.
+
+  Seven new unit tests cover the patterns and their safe-form
+  counter-examples (bounded variants, `fgets`, fixed-size argv,
+  string literals). Five new docs pages under `docs/src/rules/`
+  follow the established template; `SUMMARY.md` gains a new
+  "Memory safety (C / C++)" section.
+
 ## [0.14.0] - 2026-06-16
 
 ### Added

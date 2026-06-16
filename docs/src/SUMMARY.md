@@ -48,6 +48,14 @@
 - [RSTR-INJ-008 — Rails .where with string interpolation of params](./rules/RSTR-INJ-008.md)
 - [RSTR-INJ-009 — Rails params[...].constantize / classify](./rules/RSTR-INJ-009.md)
 - [RSTR-INJ-010 — Rails render inline: / text: with params interpolation](./rules/RSTR-INJ-010.md)
+- [RSTR-INJ-011 — C system / popen / exec* with non-literal argument](./rules/RSTR-INJ-011.md)
+
+# Memory safety (C / C++)
+
+- [RSTR-MEM-001 — strcpy / strcat / gets / sprintf](./rules/RSTR-MEM-001.md)
+- [RSTR-MEM-002 — scanf with unbounded %s](./rules/RSTR-MEM-002.md)
+- [RSTR-MEM-003 — alloca on attacker-controlled size](./rules/RSTR-MEM-003.md)
+- [RSTR-MEM-004 — memcpy / memmove with strlen length](./rules/RSTR-MEM-004.md)
 
 # Server-side request forgery
 
