@@ -82,31 +82,46 @@ details.
 
 ### Homebrew (macOS / Linux)
 
-A Homebrew formula is provided at
-[`dist/homebrew/rastray.rb`](dist/homebrew/rastray.rb). It downloads
-the same checksum-verified release tarball the shell installer uses,
-so no Rust toolchain is required.
-
-A dedicated tap repository will be published soon; until then,
-install directly from the formula file in this repo:
+The dedicated [`balangyaoejuspher/homebrew-rastray`](https://github.com/balangyaoejuspher/homebrew-rastray)
+tap downloads the same checksum-verified release tarball the shell
+installer uses, so no Rust toolchain is required:
 
 ```sh
-brew install --formula https://raw.githubusercontent.com/balangyaoejuspher/rastray/main/dist/homebrew/rastray.rb
+brew install balangyaoejuspher/rastray/rastray
 ```
+
+That single command runs `brew tap` implicitly. To upgrade later:
+
+```sh
+brew update
+brew upgrade rastray
+```
+
+The tap is bumped automatically by the release workflow on every
+tag — no manual mirroring step. The canonical formula source lives
+in this repo at [`dist/homebrew/rastray.rb`](dist/homebrew/rastray.rb).
 
 ### Scoop (Windows)
 
-A Scoop manifest is provided at
-[`dist/scoop/rastray.json`](dist/scoop/rastray.json). Same approach:
-downloads the release zip, verifies SHA256, drops `rastray.exe` on
-your `PATH`.
-
-A dedicated bucket repository will be published soon; until then,
-install directly from the manifest in this repo:
+The dedicated [`balangyaoejuspher/scoop-rastray`](https://github.com/balangyaoejuspher/scoop-rastray)
+bucket downloads the release zip, verifies SHA256, and drops
+`rastray.exe` on your `PATH`:
 
 ```powershell
-scoop install https://raw.githubusercontent.com/balangyaoejuspher/rastray/main/dist/scoop/rastray.json
+scoop bucket add rastray https://github.com/balangyaoejuspher/scoop-rastray
+scoop install rastray
 ```
+
+To upgrade later:
+
+```powershell
+scoop update
+scoop update rastray
+```
+
+The bucket is bumped automatically by the release workflow on every
+tag. The canonical manifest source lives in this repo at
+[`dist/scoop/rastray.json`](dist/scoop/rastray.json).
 
 ### From crates.io
 
