@@ -56,6 +56,7 @@
 - [RSTR-MEM-002 — scanf with unbounded %s](./rules/RSTR-MEM-002.md)
 - [RSTR-MEM-003 — alloca on attacker-controlled size](./rules/RSTR-MEM-003.md)
 - [RSTR-MEM-004 — memcpy / memmove with strlen length](./rules/RSTR-MEM-004.md)
+- [RSTR-MEM-005 — raw new outside a smart pointer](./rules/RSTR-MEM-005.md)
 
 # Server-side request forgery
 
