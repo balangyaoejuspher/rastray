@@ -239,6 +239,13 @@ pub enum Command {
         #[arg(value_name = "ARCHIVE")]
         archive: PathBuf,
     },
+    InstallHooks {
+        #[arg(long = "force", default_value_t = false)]
+        force: bool,
+
+        #[arg(value_name = "PATH", default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 impl Cli {

@@ -335,6 +335,81 @@ fn image_scan_detects_secret_in_layer_tarball() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn install_hooks_writes_pre_commit_hook_and_sets_core_hookspath() {
+    let dir = match make_fixture("install-hooks") {
+        Some(d) => d,
+        None => return,
+    };
+    if !run_git_in(&dir, &["init", "-q", "-b", "main"]) {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+
+    let bin = binary_path();
+    if !bin.exists() {
+        let _ = fs::remove_dir_all(&dir);
+        return;
+    }
+    let output = Command::new(&bin).arg("install-hooks").arg(&dir).output();
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+    };
+    assert!(
+        output.status.success(),
+        "install-hooks should succeed inside a git repo, got status {:?}, stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let hook = dir.join(".githooks").join("pre-commit");
+    assert!(
+        hook.exists(),
+        "expected hook to be written at {}",
+        hook.display()
+    );
+    let body = fs::read_to_string(&hook).unwrap_or_default();
+    assert!(body.contains("rastray --changed-only --fail-on high"));
+
+    let cfg_output = Command::new("git")
+        .arg("-C")
+        .arg(&dir)
+        .arg("config")
+        .arg("--get")
+        .arg("core.hooksPath")
+        .output();
+    if let Ok(out) = cfg_output {
+        let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        assert_eq!(value, ".githooks", "core.hooksPath should be .githooks");
+    }
+
+    let second = Command::new(&bin).arg("install-hooks").arg(&dir).output();
+    if let Ok(out) = second {
+        assert!(
+            !out.status.success(),
+            "install-hooks should refuse to overwrite without --force"
+        );
+    }
+
+    let third = Command::new(&bin)
+        .arg("install-hooks")
+        .arg("--force")
+        .arg(&dir)
+        .output();
+    if let Ok(out) = third {
+        assert!(
+            out.status.success(),
+            "install-hooks --force should succeed even when hook already exists"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 fn run_exit_code(dir: &Path, extra_args: &[&str]) -> Option<i32> {
     let bin = binary_path();
     if !bin.exists() {
