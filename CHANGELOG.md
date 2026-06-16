@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Java rule coverage broadened** with two new patterns covering
+  the OWASP-Top-Ten cases that account for most real-world Java
+  findings:
+  - `RSTR-INJ-012` (`Critical`) \u2014 `Runtime.getRuntime().exec("cmd " + var)`
+    or `new ProcessBuilder("cmd " + var)` (single-string form goes
+    through the shell; argv-array form is unaffected).
+  - `RSTR-NET-005` (`High`) \u2014 a `HostnameVerifier` whose `verify`
+    body returns `true` unconditionally (lambda or anonymous-inner-
+    class form). Disables TLS hostname binding; MITM-friendly.
+
+  Both run only against Java / Kotlin source files (`.java`, `.kt`,
+  `.kts`). Same conservative one-step direct-sink scope as every
+  other rastray rule.
+
+  Pre-existing Java coverage continues unchanged: `RSTR-DES-006`
+  (ObjectInputStream.readObject), `RSTR-XXE-005` (DocumentBuilderFactory
+  / SAXParserFactory / XMLInputFactory), `RSTR-CRY-001` (MD5
+  MessageDigest), `RSTR-CRY-002` (SHA-1 MessageDigest).
+
+  2 new unit tests cover the new patterns and their safe-form
+  counter-examples (argv-array exec, allow-list verifier).
+  2 new docs pages follow the established template; `SUMMARY.md`
+  updated.
+
 - **C++ extensions to the memory-safety rule family**: `RSTR-MEM-001`,
   `RSTR-MEM-002`, and `RSTR-INJ-011` now match the `std::`-prefixed
   variants of their target functions (`std::strcpy`, `std::scanf`,

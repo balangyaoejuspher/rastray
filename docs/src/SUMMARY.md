@@ -49,6 +49,7 @@
 - [RSTR-INJ-009 — Rails params[...].constantize / classify](./rules/RSTR-INJ-009.md)
 - [RSTR-INJ-010 — Rails render inline: / text: with params interpolation](./rules/RSTR-INJ-010.md)
 - [RSTR-INJ-011 — C system / popen / exec* with non-literal argument](./rules/RSTR-INJ-011.md)
+- [RSTR-INJ-012 — Java Runtime.exec / ProcessBuilder with concat](./rules/RSTR-INJ-012.md)
 
 # Memory safety (C / C++)
 
@@ -160,6 +161,7 @@
 - [RSTR-NET-002 — Python SSL context with verification disabled](./rules/RSTR-NET-002.md)
 - [RSTR-NET-003 — Wildcard CORS with credentials](./rules/RSTR-NET-003.md)
 - [RSTR-NET-004 — cookie httpOnly: false (network variant)](./rules/RSTR-NET-004.md)
+- [RSTR-NET-005 — Java HostnameVerifier accepts every hostname](./rules/RSTR-NET-005.md)
 
 # CI / GitHub Actions
 
