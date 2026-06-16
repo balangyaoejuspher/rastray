@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **C++ extensions to the memory-safety rule family**: `RSTR-MEM-001`,
+  `RSTR-MEM-002`, and `RSTR-INJ-011` now match the `std::`-prefixed
+  variants of their target functions (`std::strcpy`, `std::scanf`,
+  `std::system`, etc.) in addition to the unqualified C forms.
+- **`RSTR-MEM-005` (`Medium`, `Confidence::Low`)** — raw `new T(...)`
+  / `new T{...}` / `new T[...]` outside a `std::make_unique` /
+  `std::make_shared` wrapper. First built-in rule to opt into
+  `Confidence::Low`; surfaces by default so reviewers see the
+  pattern, but can be filtered out project-wide with
+  `--min-confidence high` once a team has audited their raw-`new`
+  sites.
+
+  3 new unit tests cover the `std::`-prefixed forms and the new
+  `MEM-005` pattern (including its low-confidence wiring). 1 new
+  docs page at `docs/src/rules/RSTR-MEM-005.md` follows the
+  established template; `SUMMARY.md` updated.
+
 - **C / C++ memory-safety rule family** broadens analyzer coverage
   to a previously unsupported language pair. Five new rules covering
   the OWASP-Top-25-style memory-safety bug shapes that account for

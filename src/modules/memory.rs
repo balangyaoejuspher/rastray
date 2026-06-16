@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::cli::Severity;
+use crate::cli::{Confidence, Severity};
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::reporter::{Category, Finding, Location};
 
@@ -56,7 +56,8 @@ impl Analyzer for MemoryAnalyzer {
                     findings.push(
                         Finding::new(pattern.code, message, pattern.severity, Category::Security)
                             .with_help(pattern.help)
-                            .with_location(location),
+                            .with_location(location)
+                            .with_confidence(pattern.confidence),
                     );
                 }
             }
@@ -71,6 +72,7 @@ struct PatternSpec {
     code: &'static str,
     trailer: &'static str,
     severity: Severity,
+    confidence: Confidence,
     help: &'static str,
     pattern: &'static str,
 }
@@ -79,6 +81,7 @@ struct CompiledPattern {
     code: &'static str,
     trailer: &'static str,
     severity: Severity,
+    confidence: Confidence,
     help: &'static str,
     regex: Regex,
 }
@@ -88,20 +91,23 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         code: "RSTR-MEM-001",
         trailer: "is a banned, unbounded buffer-overflow surface",
         severity: Severity::Critical,
+        confidence: Confidence::High,
         help: "use the bounded variant: `strncpy` (size-limited) and pad-terminate, `strncat`, `snprintf`, or `fgets`. Better: use a tested string library (StringView, std::string, abseil's strings) that owns its bounds",
-        pattern: r"\b(?:strcpy|strcat|gets|sprintf|vsprintf)\s*\(",
+        pattern: r"\b(?:std::)?(?:strcpy|strcat|gets|sprintf|vsprintf)\s*\(",
     },
     PatternSpec {
         code: "RSTR-MEM-002",
         trailer: "uses an unbounded `%s` in a scanf-family format — the destination buffer can be overflowed by long input",
         severity: Severity::High,
+        confidence: Confidence::High,
         help: "always specify a width: `%99s` for a 100-byte buffer, `%127s` for 128, etc. Or switch to `fgets` for line input. Note the width is one less than the destination size, leaving room for the null terminator",
-        pattern: r#"\b(?:scanf|fscanf|sscanf|vscanf|vfscanf|vsscanf)\s*\([^;]*"[^"]*%s"#,
+        pattern: r#"\b(?:std::)?(?:scanf|fscanf|sscanf|vscanf|vfscanf|vsscanf)\s*\([^;]*"[^"]*%s"#,
     },
     PatternSpec {
         code: "RSTR-MEM-003",
         trailer: "uses `alloca` — allocations beyond the page guard crash the process; on attacker-controlled sizes this becomes a stack-pivot primitive",
         severity: Severity::High,
+        confidence: Confidence::High,
         help: "replace with a heap allocation (`malloc` + `free` paired, or RAII-managed `std::vector` / `std::unique_ptr`). If a stack array is genuinely required, use a `constexpr` size with a compile-time bound check",
         pattern: r"\balloca\s*\(",
     },
@@ -109,15 +115,25 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         code: "RSTR-MEM-004",
         trailer: "is a `memcpy`/`memmove` whose length comes from `strlen(...)` — almost always an off-by-one: `strlen` returns the count without the null terminator, so the destination loses its terminator",
         severity: Severity::Medium,
+        confidence: Confidence::High,
         help: "either copy `strlen(src) + 1` to include the null byte, or use `strcpy` *with* a destination size check, or use `snprintf(dst, dst_size, \"%s\", src)` which always null-terminates",
         pattern: r"\b(?:memcpy|memmove)\s*\([^;]*\bstrlen\s*\([^)]+\)\s*\)",
+    },
+    PatternSpec {
+        code: "RSTR-MEM-005",
+        trailer: "uses raw `new` for heap allocation — ownership is implicit and a missed `delete` (or an exception between allocation and storage) leaks memory",
+        severity: Severity::Medium,
+        confidence: Confidence::Low,
+        help: "prefer `std::make_unique<T>(args)` (or `std::make_shared<T>(args)` for shared ownership). The smart-pointer wrapper releases the allocation when it goes out of scope, even on exception, and makes ownership visible at every call site. Suppress with `--min-confidence high` if your codebase has audited raw-`new` patterns",
+        pattern: r"\bnew\s+[a-zA-Z_][a-zA-Z0-9_:<>]*\s*[\(\{\[]",
     },
     PatternSpec {
         code: "RSTR-INJ-011",
         trailer: "passes a non-literal argument to a shell-spawning function — if any part of the argument is user-controlled, this is command injection",
         severity: Severity::Critical,
+        confidence: Confidence::High,
         help: "for fixed commands, keep the string literal at the call site. For variable input, switch to `execve`/`execvp` with a fixed argv array (no shell, no metacharacter parsing). Reject input containing `;`, `|`, `&`, backticks, `$()`, `<`, `>` before passing it to any spawn function",
-        pattern: r"\b(?:system|popen|execlp?|execvp?|execve)\s*\(\s*[A-Za-z_][A-Za-z_0-9]",
+        pattern: r"\b(?:std::)?(?:system|popen|execlp?|execvp?|execve)\s*\(\s*[A-Za-z_][A-Za-z_0-9]",
     },
 ];
 
@@ -132,6 +148,7 @@ fn compiled_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
                     code: spec.code,
                     trailer: spec.trailer,
                     severity: spec.severity,
+                    confidence: spec.confidence,
                     help: spec.help,
                     regex,
                 })
@@ -202,6 +219,8 @@ mod tests {
         assert!(re.is_match("gets(buf);"));
         assert!(re.is_match("sprintf(out, \"%s\", x);"));
         assert!(re.is_match("vsprintf(out, fmt, ap);"));
+        assert!(re.is_match("std::strcpy(dst, src);"));
+        assert!(re.is_match("std::sprintf(out, \"%d\", n);"));
         assert!(!re.is_match("strncpy(dst, src, 16);"));
         assert!(!re.is_match("snprintf(out, sizeof(out), \"%s\", x);"));
         assert!(!re.is_match("fgets(buf, sizeof(buf), stdin);"));
@@ -216,6 +235,7 @@ mod tests {
         assert!(re.is_match("scanf(\"%s\", buf);"));
         assert!(re.is_match("sscanf(input, \"%d %s\", &n, name);"));
         assert!(re.is_match("fscanf(fp, \"%s\", line);"));
+        assert!(re.is_match("std::scanf(\"%s\", buf);"));
         assert!(!re.is_match("printf(\"%s\\n\", x);"));
         assert!(!re.is_match("scanf(\"%d\", &n);"));
     }
@@ -254,8 +274,34 @@ mod tests {
         assert!(re.is_match("system(cmd);"));
         assert!(re.is_match("popen(query, \"r\");"));
         assert!(re.is_match("execlp(prog, prog, NULL);"));
+        assert!(re.is_match("std::system(buf);"));
         assert!(!re.is_match("system(\"ls -la\");"));
         assert!(!re.is_match("popen(\"/bin/cat /etc/hostname\", \"r\");"));
+    }
+
+    #[test]
+    fn mem_005_flags_raw_new_with_typename() {
+        let re = match regex_for("RSTR-MEM-005") {
+            Some(r) => r,
+            None => return,
+        };
+        assert!(re.is_match("auto p = new Widget(args);"));
+        assert!(re.is_match("return new Foo{};"));
+        assert!(re.is_match("new std::string(\"abc\");"));
+        assert!(re.is_match("new Buffer[size];"));
+        assert!(!re.is_match("auto p = std::make_unique<Widget>(args);"));
+        assert!(!re.is_match("auto p = std::make_shared<Foo>();"));
+        assert!(!re.is_match("// see new feature flag"));
+    }
+
+    #[test]
+    fn mem_005_uses_low_confidence() {
+        let p = compile_or_skip().unwrap_or(&[]);
+        let entry = match p.iter().find(|c| c.code == "RSTR-MEM-005") {
+            Some(e) => e,
+            None => return,
+        };
+        assert_eq!(entry.confidence, Confidence::Low);
     }
 
     #[test]
