@@ -8,6 +8,7 @@ mod crawler;
 mod git_changes;
 mod history;
 mod image;
+mod install_hooks;
 mod lsp;
 mod modules;
 mod reporter;
@@ -70,6 +71,10 @@ enum AppError {
     #[error(transparent)]
     #[diagnostic(code(rastray::image))]
     Image(#[from] image::ImageScanError),
+
+    #[error(transparent)]
+    #[diagnostic(code(rastray::install_hooks))]
+    InstallHooks(#[from] install_hooks::InstallHooksError),
 }
 
 mod exit {
@@ -149,6 +154,33 @@ fn main() -> ExitCode {
             Ok(c) => c,
             Err(err) => {
                 let report: miette::Report = err.into();
+                eprintln!("{report:?}");
+                exit::RUNTIME_ERROR
+            }
+        };
+        return ExitCode::from(code);
+    }
+
+    if let Some(Command::InstallHooks { force, path }) = &cli.command {
+        let code = match install_hooks::install_hooks(path, *force) {
+            Ok(outcome) => {
+                println!(
+                    "{} {}",
+                    if outcome.overwrote {
+                        "updated"
+                    } else {
+                        "installed"
+                    },
+                    outcome.hook_path.display()
+                );
+                println!(
+                    "set core.hooksPath = .githooks in {}",
+                    outcome.repo_root.display()
+                );
+                exit::OK
+            }
+            Err(err) => {
+                let report: miette::Report = AppError::from(err).into();
                 eprintln!("{report:?}");
                 exit::RUNTIME_ERROR
             }

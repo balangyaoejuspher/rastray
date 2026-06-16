@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`rastray install-hooks` subcommand** wires a tiny POSIX-shell
+  pre-commit hook into the current repo and points
+  `git config core.hooksPath` at it in one step. The script runs
+  `rastray --changed-only --fail-on high` on every commit (blocks
+  only on High or Critical findings in the staged diff) and exits
+  with a clear message if the `rastray` binary is missing from
+  `PATH`. Pass `--force` to overwrite an existing hook; without it
+  the subcommand refuses to clobber whatever is already there. README
+  gains a new "Native git hook (no framework)" section under
+  Continuous integration with the one-line install snippet, sitting
+  next to the existing `pre-commit` framework integration so users
+  can pick the workflow that matches their team.
+
+### Changed
+
+- README pre-commit framework example now pins `rev: v0.13.0` (was
+  `v0.11.0`, stale by two releases). Existing consumers using
+  `pre-commit autoupdate` were unaffected; consumers who copy-pasted
+  the README snippet now get the latest existing tag on first install.
+
 ## [0.13.0] - 2026-06-16
 
 ### Added

@@ -534,7 +534,7 @@ with one entry. Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/balangyaoejuspher/rastray
-    rev: v0.11.0
+    rev: v0.13.0
     hooks:
       - id: rastray
 ```
@@ -558,6 +558,25 @@ on your `PATH`. Install it via the [prebuilt installer](#prebuilt-binaries-recom
 or `cargo install rastray --locked` first. The hooks deliberately do not
 build `rastray` from source on every contributor's machine — that would
 turn a one-second pre-commit check into a multi-minute Rust compile.
+
+### Native git hook (no framework)
+
+For projects that don't already use the `pre-commit` framework, `rastray
+install-hooks` writes a tiny `.githooks/pre-commit` shell script and
+points `git config core.hooksPath` at it in one shot:
+
+```sh
+rastray install-hooks
+```
+
+The hook runs `rastray --changed-only --fail-on high` on every commit
+(blocks only on High or Critical findings in the staged diff). Pass
+`--force` to overwrite an existing hook file without prompting; without
+it the subcommand refuses to clobber whatever is already there.
+
+The script is portable POSIX shell — works on macOS, Linux, and Git
+for Windows out of the box. It checks `command -v rastray` first and
+exits with a clear error if the binary is missing from `PATH`.
 
 ### Git-history secret sweep
 
