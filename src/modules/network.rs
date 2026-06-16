@@ -89,6 +89,7 @@ struct CompiledPattern {
 const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const PY_EXTENSIONS: &[&str] = &["py"];
 const GO_EXTENSIONS: &[&str] = &["go"];
+const JAVA_EXTENSIONS: &[&str] = &["java", "kt", "kts"];
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -154,6 +155,22 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         help: "set httpOnly: true (or omit the option) so the cookie is not exposed to JS",
         pattern: r"\bhttpOnly\s*:\s*false\b",
         extensions: JS_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-NET-005",
+        message: "Java HostnameVerifier accepts every hostname (verify always returns true); MITM-friendly TLS",
+        severity: Severity::High,
+        help: "remove the custom verifier and trust the JDK default. If you must override, validate `hostname` against an allow-list and call the default verifier on success — never `return true` unconditionally",
+        pattern: r"\bsetHostnameVerifier\s*\(\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*,\s*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*->\s*true\b",
+        extensions: JAVA_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-NET-005",
+        message: "Java HostnameVerifier inner class returns true for every hostname; MITM-friendly TLS",
+        severity: Severity::High,
+        help: "remove the verifier override and trust the JDK default. If overriding is genuinely required, validate `hostname` against an allow-list before returning true",
+        pattern: r"new\s+HostnameVerifier\s*\(\s*\)\s*\{[^}]*verify\s*\([^)]*\)\s*\{[^}]*return\s+true\b",
+        extensions: JAVA_EXTENSIONS,
     },
 ];
 
@@ -270,5 +287,31 @@ mod tests {
         let Some(re) = re else { return };
         assert!(re.is_match(r#"cors({ origin: "*", credentials: true })"#));
         assert!(!re.is_match(r#"cors({ origin: "https://app.example.com", credentials: true })"#));
+    }
+
+    #[test]
+    fn java_hostname_verifier_lambda_returns_true_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let res: Vec<_> = patterns
+            .iter()
+            .filter(|p| p.code == "RSTR-NET-005")
+            .map(|p| &p.regex)
+            .collect();
+        if res.is_empty() {
+            return;
+        }
+        let any = |s: &str| res.iter().any(|r| r.is_match(s));
+        assert!(any(
+            "conn.setHostnameVerifier((hostname, session) -> true);"
+        ));
+        assert!(any(
+            "conn.setHostnameVerifier(new HostnameVerifier() { public boolean verify(String h, SSLSession s) { return true; } });",
+        ));
+        assert!(!any(
+            "conn.setHostnameVerifier((hostname, session) -> ALLOW_LIST.contains(hostname));",
+        ));
     }
 }

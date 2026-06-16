@@ -91,6 +91,7 @@ const PY_EXTENSIONS: &[&str] = &["py"];
 const GO_EXTENSIONS: &[&str] = &["go"];
 const PHP_EXTENSIONS: &[&str] = &["php"];
 const RB_EXTENSIONS: &[&str] = &["rb"];
+const JAVA_EXTENSIONS: &[&str] = &["java", "kt", "kts"];
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -252,6 +253,22 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         help: "render fixed templates and pass user input as locals: render :show, locals: { name: params[:name] }; never let user input become the template source",
         pattern: r#"\brender\s*\(?\s*(?:inline|text|inline_template)\s*:\s*[^,)]*#\{[^}]*params\b"#,
         extensions: RB_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-012",
+        message: "Java Runtime.exec / ProcessBuilder built from a concatenated string; command-injection risk if any segment is user-controlled",
+        severity: Severity::Critical,
+        help: "pass arguments as a String[] array (no shell), e.g. new ProcessBuilder(\"git\", \"log\", branch). Never let request input join a shell command line via `+`. If you absolutely must use a shell, allow-list the input first",
+        pattern: r#"\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*exec\s*\(\s*"[^"]*"\s*\+\s*[A-Za-z_]"#,
+        extensions: JAVA_EXTENSIONS,
+    },
+    PatternSpec {
+        code: "RSTR-INJ-012",
+        message: "Java new ProcessBuilder built from a concatenated string; command-injection risk if any segment is user-controlled",
+        severity: Severity::Critical,
+        help: "split the command into a String[] array: new ProcessBuilder(\"cmd\", arg1, arg2). The first form (single concatenated string) goes through the shell",
+        pattern: r#"\bnew\s+ProcessBuilder\s*\(\s*"[^"]*"\s*\+\s*[A-Za-z_]"#,
+        extensions: JAVA_EXTENSIONS,
     },
 ];
 
@@ -492,5 +509,28 @@ mod tests {
         assert!(re.is_match(r#"render inline: "<h1>Hi #{params[:name]}</h1>""#));
         assert!(re.is_match(r#"render(text: "Hello #{params[:name]}")"#));
         assert!(!re.is_match(r#"render :show, locals: { name: params[:name] }"#));
+    }
+
+    #[test]
+    fn java_runtime_exec_with_concat_matches() {
+        let patterns = match compiled_patterns() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let res: Vec<_> = patterns
+            .iter()
+            .filter(|p| p.code == "RSTR-INJ-012")
+            .map(|p| &p.regex)
+            .collect();
+        if res.is_empty() {
+            return;
+        }
+        let any = |s: &str| res.iter().any(|r| r.is_match(s));
+        assert!(any(r#"Runtime.getRuntime().exec("ping " + host);"#));
+        assert!(any(r#"new ProcessBuilder("git log " + branch);"#));
+        assert!(!any(
+            r#"Runtime.getRuntime().exec(new String[] {"ping", host});"#
+        ));
+        assert!(!any(r#"new ProcessBuilder("git", "log", branch);"#));
     }
 }
