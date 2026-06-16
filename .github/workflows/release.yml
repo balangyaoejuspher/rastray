@@ -232,3 +232,136 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked
+
+  dist-bump:
+    name: Bump Homebrew tap and Scoop bucket
+    needs: installers
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version and tarball SHAs
+        id: shas
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          base="https://github.com/balangyaoejuspher/rastray/releases/download/${TAG}"
+          for asset_id in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
+              sha=$(curl -fsSL "${base}/rastray-${TAG}-${asset_id}.tar.gz.sha256" | awk '{print $1}')
+              echo "${asset_id}=${sha}" >> "$GITHUB_OUTPUT"
+          done
+          win_sha=$(curl -fsSL "${base}/rastray-${TAG}-x86_64-pc-windows-msvc.zip.sha256" | awk '{print $1}')
+          echo "x86_64-pc-windows-msvc=${win_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew tap (balangyaoejuspher/homebrew-rastray)
+        env:
+          GH_TOKEN: ${{ secrets.DIST_REPOS_TOKEN }}
+          VERSION: ${{ steps.shas.outputs.version }}
+          ARM64_DARWIN: ${{ steps.shas.outputs['aarch64-apple-darwin'] }}
+          X64_DARWIN: ${{ steps.shas.outputs['x86_64-apple-darwin'] }}
+          X64_LINUX: ${{ steps.shas.outputs['x86_64-unknown-linux-gnu'] }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+              echo "::warning::DIST_REPOS_TOKEN secret not set; skipping Homebrew tap bump"
+              exit 0
+          fi
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/balangyaoejuspher/homebrew-rastray.git" tap
+          cd tap
+          cat > Formula/rastray.rb <<EOF
+          class Rastray < Formula
+            desc "Blazing-fast static analysis for security, dependencies, and performance"
+            homepage "https://github.com/balangyaoejuspher/rastray"
+            version "${VERSION}"
+            license any_of: ["MIT", "Apache-2.0"]
+
+            on_macos do
+              on_arm do
+                url "https://github.com/balangyaoejuspher/rastray/releases/download/v#{version}/rastray-v#{version}-aarch64-apple-darwin.tar.gz"
+                sha256 "${ARM64_DARWIN}"
+              end
+              on_intel do
+                url "https://github.com/balangyaoejuspher/rastray/releases/download/v#{version}/rastray-v#{version}-x86_64-apple-darwin.tar.gz"
+                sha256 "${X64_DARWIN}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/balangyaoejuspher/rastray/releases/download/v#{version}/rastray-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${X64_LINUX}"
+              end
+            end
+
+            def install
+              bin.install "rastray"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/rastray --version")
+              (testpath/"sample.py").write <<~PY
+                import os
+                os.system("echo hello")
+              PY
+              system "#{bin}/rastray", testpath.to_s, "--fail-on", "never"
+            end
+          end
+          EOF
+          if git diff --quiet; then
+              echo "Formula already up to date"
+              exit 0
+          fi
+          git -c user.name="rastray-release-bot" -c user.email="balangyao.e.juspher+rastray-release-bot@users.noreply.github.com" \
+              commit -am "chore: bump rastray to ${VERSION}"
+          git push origin main
+
+      - name: Update Scoop bucket (balangyaoejuspher/scoop-rastray)
+        env:
+          GH_TOKEN: ${{ secrets.DIST_REPOS_TOKEN }}
+          VERSION: ${{ steps.shas.outputs.version }}
+          WIN_HASH: ${{ steps.shas.outputs['x86_64-pc-windows-msvc'] }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+              echo "::warning::DIST_REPOS_TOKEN secret not set; skipping Scoop bucket bump"
+              exit 0
+          fi
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/balangyaoejuspher/scoop-rastray.git" bucket
+          cd bucket
+          cat > bucket/rastray.json <<EOF
+          {
+              "version": "${VERSION}",
+              "description": "Blazing-fast static analysis CLI for security, dependency, and performance audits.",
+              "homepage": "https://github.com/balangyaoejuspher/rastray",
+              "license": "MIT OR Apache-2.0",
+              "architecture": {
+                  "64bit": {
+                      "url": "https://github.com/balangyaoejuspher/rastray/releases/download/v${VERSION}/rastray-v${VERSION}-x86_64-pc-windows-msvc.zip",
+                      "hash": "${WIN_HASH}",
+                      "bin": "rastray.exe"
+                  }
+              },
+              "checkver": {
+                  "github": "https://github.com/balangyaoejuspher/rastray"
+              },
+              "autoupdate": {
+                  "architecture": {
+                      "64bit": {
+                          "url": "https://github.com/balangyaoejuspher/rastray/releases/download/v\$version/rastray-v\$version-x86_64-pc-windows-msvc.zip",
+                          "hash": {
+                              "url": "\$url.sha256"
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+          if git diff --quiet; then
+              echo "Manifest already up to date"
+              exit 0
+          fi
+          git -c user.name="rastray-release-bot" -c user.email="balangyao.e.juspher+rastray-release-bot@users.noreply.github.com" \
+              commit -am "chore: bump rastray to ${VERSION}"
+          git push origin main

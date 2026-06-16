@@ -8,6 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Dedicated Homebrew tap and Scoop bucket repos.** The previously
+  in-tree `dist/` files now have proper canonical install paths:
+  - macOS / Linux:
+    `brew install balangyaoejuspher/rastray/rastray`
+    (mirrors `dist/homebrew/rastray.rb` into the
+    [balangyaoejuspher/homebrew-rastray](https://github.com/balangyaoejuspher/homebrew-rastray)
+    tap)
+  - Windows:
+    `scoop bucket add rastray https://github.com/balangyaoejuspher/scoop-rastray; scoop install rastray`
+    (mirrors `dist/scoop/rastray.json` into the
+    [balangyaoejuspher/scoop-rastray](https://github.com/balangyaoejuspher/scoop-rastray)
+    bucket)
+
+  Both downstream repos are bumped automatically by a new
+  `dist-bump` job in `.github/workflows/release.yml` that runs at
+  the end of every release tag push. The job reads the four
+  per-tarball `.sha256` files from the GitHub release, rewrites the
+  formula and the manifest with the new version + hashes, and
+  pushes the commit to each repo. Gated on a `DIST_REPOS_TOKEN`
+  repository secret; if the secret is missing the job warns and
+  exits cleanly so the rest of the release workflow keeps working.
+
+  README "Installation" section's Homebrew and Scoop subsections now
+  document the actual `brew install` / `scoop bucket add` commands
+  (replacing the previous "tap repository will be published soon"
+  placeholder). `dist/README.md` documents the auto-bump flow plus
+  a manual-refresh fallback procedure.
+
+  In-tree `dist/homebrew/rastray.rb` and `dist/scoop/rastray.json`
+  are bumped to v0.13.0 in this PR; future tags update them via
+  the workflow.
+
 - **`rastray install-hooks` subcommand** wires a tiny POSIX-shell
   pre-commit hook into the current repo and points
   `git config core.hooksPath` at it in one step. The script runs

@@ -1,12 +1,12 @@
 {
-    "version": "0.11.0",
-    "description": "Blazing-fast static analysis for security, dependencies, and performance.",
+    "version": "0.13.0",
+    "description": "Blazing-fast static analysis CLI for security, dependency, and performance audits.",
     "homepage": "https://github.com/balangyaoejuspher/rastray",
     "license": "MIT OR Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/balangyaoejuspher/rastray/releases/download/v0.11.0/rastray-v0.11.0-x86_64-pc-windows-msvc.zip",
-            "hash": "bbf422a6e1493de47da5f1a8724bea4f8aca02ee59f29b9e5ee8fefe8fed148e",
+            "url": "https://github.com/balangyaoejuspher/rastray/releases/download/v0.13.0/rastray-v0.13.0-x86_64-pc-windows-msvc.zip",
+            "hash": "e4a67dd596d723a9f2a39bf25458ae4e8f8dcbcf8b7e5b50a3e295f9b43135da",
             "bin": "rastray.exe"
         }
     },

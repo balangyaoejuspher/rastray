@@ -1,33 +1,50 @@
 # Distribution manifests
 
-Package-manager manifests for `rastray`. Each file is the source of
-truth that gets copied (manually for now, automatically later) into
-the corresponding distribution channel.
+Package-manager source-of-truth for `rastray`. The release workflow
+mirrors these files into the dedicated tap and bucket repos on every
+tag push — no manual SHA-refresh step.
 
-| file | channel | how end users consume it |
-|------|---------|---------------------------|
-| `homebrew/rastray.rb` | Homebrew tap | `brew install balangyaoejuspher/rastray/rastray` |
-| `scoop/rastray.json`  | Scoop bucket | `scoop bucket add rastray https://github.com/balangyaoejuspher/scoop-rastray; scoop install rastray` |
+| file | mirrored to | how end users consume it |
+|------|-------------|---------------------------|
+| `homebrew/rastray.rb` | [balangyaoejuspher/homebrew-rastray](https://github.com/balangyaoejuspher/homebrew-rastray) | `brew install balangyaoejuspher/rastray/rastray` |
+| `scoop/rastray.json`  | [balangyaoejuspher/scoop-rastray](https://github.com/balangyaoejuspher/scoop-rastray) | `scoop bucket add rastray https://github.com/balangyaoejuspher/scoop-rastray; scoop install rastray` |
 
-## Status
+## How the auto-bump works
 
-- The manifests are **pinned to the current release tag** (`v0.11.0`
-  at time of writing). On every new release, the release PR bumps
-  the `version`, `url`, and `sha256` / `hash` in both files.
-- The Homebrew tap repo (`homebrew-rastray`) and the Scoop bucket
-  repo (`scoop-rastray`) are not yet published. Once the manifests
-  here have been validated against one or two releases, the same
-  files will be mirrored into those repos and the `brew tap` /
-  `scoop bucket add` instructions in the main README will start
-  pointing at them.
+The `dist-bump` job in
+[`.github/workflows/release.yml`](../.github/workflows/release.yml)
+runs at the end of every release tag push:
 
-## Refresh procedure (manual)
+1. Reads the freshly-published `.sha256` files for the four
+   release tarballs (`aarch64-apple-darwin`, `x86_64-apple-darwin`,
+   `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`).
+2. Rewrites `Formula/rastray.rb` in `homebrew-rastray` with the
+   new version + SHAs and pushes the commit.
+3. Rewrites `bucket/rastray.json` in `scoop-rastray` the same way
+   and pushes the commit.
 
-When cutting a new release:
+The job is gated on a `DIST_REPOS_TOKEN` repository secret with
+`contents: write` on both downstream repos. If the secret is not
+set, the job logs a warning and exits cleanly so the rest of the
+release workflow keeps working.
+
+## Why keep the source in `dist/`?
+
+The dedicated tap and bucket repos are mirrors. Keeping the canonical
+file in this repo means:
+
+- One PR to bump version / change formula structure / fix a typo —
+  the mirrors update automatically on the next tag.
+- The diff is easy to review alongside the source change that
+  triggered it.
+- Existing baselines, link references, and the
+  `https://raw.githubusercontent.com/.../dist/...` URLs that some
+  early adopters bookmarked all keep working.
+
+## Manual refresh (only if the auto-bump is broken)
 
 ```sh
-# 1. After the release workflow finishes, fetch every SHA256
-TAG=v0.12.0
+TAG=v0.14.0
 for asset in \
     rastray-${TAG}-aarch64-apple-darwin.tar.gz \
     rastray-${TAG}-x86_64-apple-darwin.tar.gz \
@@ -40,24 +57,6 @@ do
 done
 ```
 
-# 2. Update `dist/homebrew/rastray.rb`:
-#    - bump `version "0.11.0"` to the new version
-#    - replace each `sha256 "..."` with the corresponding hash above
-
-# 3. Update `dist/scoop/rastray.json`:
-#    - bump the `"version"` field
-#    - replace the `"url"` (rev path) and `"hash"` values
-
-# 4. Commit alongside the version bump as part of the release PR.
-
-## Tested install paths
-
-- macOS Apple Silicon — `brew install --build-from-tarball dist/homebrew/rastray.rb` (smoke-tested before publication)
-- Linux x86_64 — same formula, on-linux block exercised in CI matrix
-- Windows x86_64 — `scoop install dist/scoop/rastray.json` (manual smoke-test)
-
-## Why not auto-update?
-
-A `release.yml` job that opens a PR to the tap / bucket repos on
-every tag push is on the roadmap. Until then, the manual refresh is
-two `sed` calls inside the release PR — small enough not to block.
+Then update the `version` and `sha256` fields in
+`homebrew/rastray.rb` and `scoop/rastray.json` and commit alongside
+the version bump.
