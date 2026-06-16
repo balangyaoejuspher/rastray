@@ -7,6 +7,7 @@ pub mod iac;
 pub mod injection;
 pub mod jwt;
 pub mod ldap;
+pub mod memory;
 pub mod network;
 pub mod nosqli;
 pub mod open_redirect;
@@ -60,6 +61,7 @@ pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Se
         Box::new(jwt::JwtAnalyzer::new()),
         Box::new(orm::OrmAnalyzer::new()),
         Box::new(ldap::LdapAnalyzer::new()),
+        Box::new(memory::MemoryAnalyzer::new()),
         Box::new(redos::RedosAnalyzer::new()),
         Box::new(custom_rules::CustomRulesAnalyzer::new(&config.custom_rules)),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
