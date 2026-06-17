@@ -5,6 +5,7 @@ mod baseline;
 mod cli;
 mod config;
 mod crawler;
+mod fingerprint;
 mod git_changes;
 mod history;
 mod image;
@@ -237,6 +238,7 @@ fn run(cli: Cli) -> Result<u8, AppError> {
 
     let mut report = Report::new();
     report.summary_only = summary_only;
+    report.fingerprint = crawl.fingerprint.clone();
     populate_stats(&mut report, &crawl);
 
     for err in &crawl.errors {

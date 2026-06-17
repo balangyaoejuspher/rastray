@@ -167,6 +167,7 @@ mod tests {
             }],
             skipped: 0,
             errors: vec![],
+            fingerprint: Default::default(),
         };
         let result = CustomRulesAnalyzer::new(&rules)
             .analyze(&crawl)

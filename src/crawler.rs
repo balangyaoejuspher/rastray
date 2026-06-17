@@ -54,6 +54,7 @@ pub struct CrawlSummary {
     pub files: Vec<DiscoveredFile>,
     pub skipped: usize,
     pub errors: Vec<String>,
+    pub fingerprint: crate::fingerprint::ProjectFingerprint,
 }
 
 impl CrawlSummary {
@@ -140,9 +141,11 @@ pub fn walk_project(cli: &Cli) -> Result<CrawlSummary, CrawlError> {
 
     drop(tx);
 
-    let summary = aggregator
+    let mut summary = aggregator
         .join()
         .unwrap_or_else(|_| CrawlSummary::default());
+
+    summary.fingerprint = crate::fingerprint::fingerprint(&summary);
 
     Ok(summary)
 }
@@ -525,6 +528,7 @@ mod tests {
             ],
             skipped: 0,
             errors: Vec::new(),
+            fingerprint: Default::default(),
         };
         assert_eq!(summary.total(), 3);
         assert_eq!(summary.count_of(FileKind::Source), 2);
