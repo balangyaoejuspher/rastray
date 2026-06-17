@@ -39,6 +39,10 @@ pub trait Analyzer {
     fn name(&self) -> &'static str;
 
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError>;
+
+    fn wants(&self, _crawl: &CrawlSummary) -> bool {
+        true
+    }
 }
 
 pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Send + Sync>> {

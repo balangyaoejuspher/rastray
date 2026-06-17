@@ -309,6 +309,9 @@ fn populate_stats(report: &mut Report, crawl: &CrawlSummary) {
 
 fn run_analyzers(cli: &Cli, config: &Config, crawl: &CrawlSummary, report: &mut Report) {
     for analyzer in default_registry(cli, config) {
+        if !analyzer.wants(crawl) {
+            continue;
+        }
         match analyzer.analyze(crawl) {
             Ok(findings) => {
                 let kept = findings

@@ -23,6 +23,19 @@ impl Analyzer for IacAnalyzer {
         "iac"
     }
 
+    fn wants(&self, crawl: &CrawlSummary) -> bool {
+        crawl.files.iter().any(|f| {
+            if is_dockerfile(&f.path) || is_terraform_file(&f.path) {
+                return true;
+            }
+            f.path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase())
+                .is_some_and(|ext| ext == "yaml" || ext == "yml")
+        })
+    }
+
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
         let docker_patterns = compiled_docker_patterns()?;
         let k8s_patterns = compiled_k8s_patterns()?;
@@ -457,5 +470,44 @@ mod tests {
             assert!(re.is_match("publicly_accessible=true"));
             assert!(!re.is_match("  publicly_accessible = false"));
         }
+    }
+
+    fn crawl_with(files: Vec<PathBuf>) -> CrawlSummary {
+        use crate::crawler::FileKind;
+        CrawlSummary {
+            files: files
+                .into_iter()
+                .map(|p| crate::crawler::DiscoveredFile {
+                    path: p,
+                    kind: FileKind::Source,
+                    size: None,
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn wants_returns_false_without_iac_files() {
+        let crawl = crawl_with(vec!["src/lib.rs".into(), "README.md".into()]);
+        assert!(!IacAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_true_for_dockerfile() {
+        let crawl = crawl_with(vec!["Dockerfile".into()]);
+        assert!(IacAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_true_for_terraform() {
+        let crawl = crawl_with(vec!["infra/main.tf".into()]);
+        assert!(IacAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_true_for_yaml() {
+        let crawl = crawl_with(vec!["k8s/pod.yaml".into()]);
+        assert!(IacAnalyzer::new().wants(&crawl));
     }
 }

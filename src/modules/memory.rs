@@ -23,6 +23,19 @@ impl Analyzer for MemoryAnalyzer {
         "memory"
     }
 
+    fn wants(&self, crawl: &CrawlSummary) -> bool {
+        crawl.files.iter().any(|f| {
+            if f.kind != FileKind::Source {
+                return false;
+            }
+            f.path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase())
+                .is_some_and(|ext| C_EXTENSIONS.iter().any(|e| *e == ext))
+        })
+    }
+
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
         let patterns = compiled_patterns()?;
         let mut findings = Vec::new();
@@ -310,5 +323,43 @@ mod tests {
         let trimmed = trim_match(&long);
         assert!(trimmed.ends_with("..."));
         assert!(trimmed.len() <= 83);
+    }
+
+    fn crawl_with(files: Vec<(std::path::PathBuf, FileKind)>) -> CrawlSummary {
+        CrawlSummary {
+            files: files
+                .into_iter()
+                .map(|(p, k)| crate::crawler::DiscoveredFile {
+                    path: p,
+                    kind: k,
+                    size: None,
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn wants_returns_false_when_no_c_or_cpp_source() {
+        let crawl = crawl_with(vec![
+            ("src/lib.rs".into(), FileKind::Source),
+            ("package.json".into(), FileKind::Manifest),
+        ]);
+        assert!(!MemoryAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_true_for_c_or_cpp_source() {
+        let crawl = crawl_with(vec![
+            ("src/lib.rs".into(), FileKind::Source),
+            ("native/buf.cpp".into(), FileKind::Source),
+        ]);
+        assert!(MemoryAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_false_when_c_extension_is_not_source_kind() {
+        let crawl = crawl_with(vec![("docs/example.c".into(), FileKind::Other)]);
+        assert!(!MemoryAnalyzer::new().wants(&crawl));
     }
 }

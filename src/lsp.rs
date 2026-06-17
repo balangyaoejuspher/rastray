@@ -67,6 +67,9 @@ impl RastrayLanguageServer {
             if analyzer.name() == "dependencies" {
                 continue;
             }
+            if !analyzer.wants(&crawl) {
+                continue;
+            }
             if let Ok(mut f) = analyzer.analyze(&crawl) {
                 findings.append(&mut f);
             }

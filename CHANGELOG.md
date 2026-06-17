@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`Analyzer::wants(&CrawlSummary) -> bool`** — optional trait method
+  letting an analyzer declare whether the current scan is relevant for
+  it before any per-file work begins. Defaults to `true`, so every
+  existing analyzer keeps current behaviour. The run loop in
+  `main.rs` and the LSP per-document loop both consult `wants` and
+  skip the analyzer entirely when it returns `false`.
+
+  Three language-locked analyzers opt in as the demonstration:
+  - `memory` (C / C++) returns `false` when the crawl contains no
+    `*.c` / `*.cc` / `*.cpp` / `*.cxx` / `*.h` / `*.hpp` source.
+  - `gha` returns `false` when no YAML file lives under
+    `.github/workflows/`.
+  - `iac` returns `false` when no Dockerfile, `*.tf` / `*.tfvars`,
+    or `*.yaml` / `*.yml` candidate is present.
+
+  Every other built-in analyzer keeps the default `wants = true` and
+  is unaffected. 9 new unit tests cover the new method (default
+  preserved + opt-out fires on irrelevant fingerprint + opt-in
+  fires on relevant fingerprint).
+
 - **Project fingerprint primitive** \u2014 the crawler now produces a
   `ProjectFingerprint` describing every detected project in the
   repository (root path, manifest, language, ecosystem, and
