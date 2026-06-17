@@ -59,6 +59,11 @@
 - [RSTR-MEM-004 — memcpy / memmove with strlen length](./rules/RSTR-MEM-004.md)
 - [RSTR-MEM-005 — raw new outside a smart pointer](./rules/RSTR-MEM-005.md)
 
+# NestJS (framework-aware)
+
+- [RSTR-NEST-001 — Prisma destructive call with bare id](./rules/RSTR-NEST-001.md)
+- [RSTR-NEST-002 — controller exposes a mutation without any guard](./rules/RSTR-NEST-002.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)
