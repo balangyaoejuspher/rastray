@@ -23,6 +23,13 @@ impl Analyzer for GhaAnalyzer {
         "gha"
     }
 
+    fn wants(&self, crawl: &CrawlSummary) -> bool {
+        crawl
+            .files
+            .iter()
+            .any(|f| f.kind == FileKind::Config && is_workflow_path(&f.path))
+    }
+
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
         let patterns = compiled_patterns()?;
         let mut findings = Vec::new();
@@ -232,5 +239,37 @@ mod tests {
         assert!(re.is_match("echo \"${{ github.event.issue.title }}\""));
         assert!(re.is_match("echo \"${{ github.event.pull_request.head.ref }}\""));
         assert!(!re.is_match("echo \"${{ github.repository }}\""));
+    }
+
+    fn crawl_with(files: Vec<(PathBuf, FileKind)>) -> CrawlSummary {
+        CrawlSummary {
+            files: files
+                .into_iter()
+                .map(|(p, k)| crate::crawler::DiscoveredFile {
+                    path: p,
+                    kind: k,
+                    size: None,
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn wants_returns_false_without_workflow_files() {
+        let crawl = crawl_with(vec![
+            ("src/lib.rs".into(), FileKind::Source),
+            (".github/dependabot.yml".into(), FileKind::Config),
+        ]);
+        assert!(!GhaAnalyzer::new().wants(&crawl));
+    }
+
+    #[test]
+    fn wants_returns_true_with_workflow_file() {
+        let crawl = crawl_with(vec![
+            ("src/lib.rs".into(), FileKind::Source),
+            (".github/workflows/ci.yml".into(), FileKind::Config),
+        ]);
+        assert!(GhaAnalyzer::new().wants(&crawl));
     }
 }
