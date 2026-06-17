@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **NestJS framework-aware analyzer family** — the first rule family
+  gated by `ProjectFingerprint`. Two rules ship in this first cut,
+  both scoped to TypeScript / JavaScript source files (`.ts`, `.tsx`,
+  `.js`, `.jsx`, `.mts`, `.cts`) inside a project whose `package.json`
+  lists `@nestjs/core` or `@nestjs/common`. In a monorepo with a
+  NestJS API beside a Next.js front-end and a Python SDK, only the
+  NestJS sub-tree is scanned:
+  - `RSTR-NEST-001` (`High`) — `prisma.<model>.<delete|update|findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow>({ where: { id: <bare-identifier> } })`.
+    The bare-identifier form skips type coercion *and* ownership
+    scoping; explicit `Number(id)` / `parseInt(id, 10)` / `+id` /
+    `BigInt(id)` wrappers and qualified accesses (`req.params.id`,
+    `this.id`, `dto.userId`) are not flagged. Bulk reads
+    (`findMany`, `count`) are not flagged.
+  - `RSTR-NEST-002` (`High`) — a NestJS controller file that
+    declares at least one mutation handler (`@Post` / `@Put` /
+    `@Patch` / `@Delete`) but no guard decorator anywhere in the
+    file (`@UseGuards`, `@Roles`, `@Auth`, `@Public`, `@SkipAuth`).
+    Per-handler and per-class guards both silence the check;
+    read-only controllers (only `@Get`) are never flagged.
+
+  The analyzer overrides `Analyzer::wants` to return `false` when no
+  NestJS project is fingerprinted, so on a non-NestJS repository it
+  costs zero per-file work. 11 new unit tests cover the regex
+  positives / negatives, the per-file controller heuristic, the
+  `wants` predicate in both directions, and an end-to-end
+  fingerprint-scoped scan in a temp monorepo. 2 new docs pages at
+  `docs/src/rules/RSTR-NEST-001.md` and `RSTR-NEST-002.md` follow
+  the established template; `SUMMARY.md` gains a new "NestJS
+  (framework-aware)" section.
+
 - **`Analyzer::wants(&CrawlSummary) -> bool`** — optional trait method
   letting an analyzer declare whether the current scan is relevant for
   it before any per-file work begins. Defaults to `true`, so every
