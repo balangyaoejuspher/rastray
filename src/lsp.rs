@@ -60,6 +60,7 @@ impl RastrayLanguageServer {
             }],
             skipped: 0,
             errors: Vec::new(),
+            fingerprint: Default::default(),
         };
         let mut findings = Vec::new();
         for analyzer in &self.analyzers {

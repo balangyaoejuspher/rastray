@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Project fingerprint primitive** \u2014 the crawler now produces a
+  `ProjectFingerprint` describing every detected project in the
+  repository (root path, manifest, language, ecosystem, and
+  best-effort framework list). Detection is based on manifest names
+  (`Cargo.toml`, `package.json`, `pyproject.toml`, `go.mod`,
+  `pom.xml`, `build.gradle[.kts]`, `composer.json`, `Gemfile`,
+  `Package.resolved`, `pubspec.{yaml,lock}`, `mix.{exs,lock}`,
+  `packages.lock.json`) plus lightweight substring scanning of
+  manifest contents for framework markers (Actix, Axum, Rocket,
+  Express, NestJS, Next.js, React, Vue, Svelte, FastAPI, Django,
+  Flask, Gin, Spring Boot, Rails, Laravel, Symfony). Multi-project
+  monorepos are fully supported \u2014 each manifest contributes its
+  own `DetectedProject` entry.
+
+  The fingerprint is purely additive: it is exposed on
+  `CrawlSummary.fingerprint`, surfaced under `fingerprint` in the
+  JSON report (omitted when nothing was detected), and a one-line
+  `Detected: ...` summary is printed at the end of human output.
+  Existing analyzers are unchanged; future framework-aware rules
+  will read this primitive to scope their work.
+
 ## [0.15.0] - 2026-06-16
 
 ### Added

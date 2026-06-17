@@ -126,8 +126,14 @@ pub struct Report {
     pub findings: Vec<Finding>,
     pub stats: ReportStats,
     pub perf: ReportPerf,
+    #[serde(skip_serializing_if = "skip_empty_fingerprint")]
+    pub fingerprint: crate::fingerprint::ProjectFingerprint,
     #[serde(skip)]
     pub summary_only: bool,
+}
+
+fn skip_empty_fingerprint(fp: &crate::fingerprint::ProjectFingerprint) -> bool {
+    !fp.detected()
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -731,7 +737,39 @@ fn print_summary_block(report: &Report) {
     print_coverage(report);
     println!();
     print_performance(report);
+    print_fingerprint(report);
     println!("{SUMMARY_RULE}");
+}
+
+fn print_fingerprint(report: &Report) {
+    if !report.fingerprint.detected() {
+        return;
+    }
+    let mut parts: Vec<String> = report
+        .fingerprint
+        .projects
+        .iter()
+        .map(|p| {
+            let label = if let Some(fw) = p.frameworks.first() {
+                fw.as_str()
+            } else {
+                p.language.as_str()
+            };
+            let display_root = p
+                .root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_else(|| p.root.to_str().unwrap_or("."));
+            format!("{label} ({display_root})")
+        })
+        .collect();
+    parts.sort();
+    parts.dedup();
+    if parts.is_empty() {
+        return;
+    }
+    println!();
+    println!("  Detected: {}", parts.join(", "));
 }
 
 fn print_severity_distribution(report: &Report) {

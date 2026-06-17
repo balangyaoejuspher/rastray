@@ -225,6 +225,7 @@ mod tests {
             }],
             skipped: 0,
             errors: vec![],
+            fingerprint: Default::default(),
         };
         let result = SstiAnalyzer::new().analyze(&crawl).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&dir);

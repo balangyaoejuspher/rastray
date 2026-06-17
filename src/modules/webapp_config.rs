@@ -271,6 +271,7 @@ mod tests {
             }],
             skipped: 0,
             errors: vec![],
+            fingerprint: Default::default(),
         };
         let result = WebappConfigAnalyzer::new()
             .analyze(&crawl)
