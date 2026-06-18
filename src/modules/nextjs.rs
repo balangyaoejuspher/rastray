@@ -177,7 +177,7 @@ fn compiled_aux_patterns() -> Result<&'static AuxPatterns, AnalyzerError> {
         )
         .map_err(|e| format!("mutation_export: {e}"))?;
         let auth_marker = Regex::new(
-            r#"\b(?:getServerSession|getToken|currentUser|getUser|requireAuth|requireSession|auth\s*\(|cookies\s*\(\s*\)\s*\.\s*get|headers\s*\(\s*\)\s*\.\s*get\s*\(\s*['"]authorization)"#,
+            r#"\b(?:getServerSession|getToken|currentUser|getUser|requireAuth|requireSession|verifySession|verifyToken|auth\s*\(|cookies\s*\(\s*\)\s*\.\s*get|headers\s*\(\s*\)\s*\.\s*get\s*\(\s*['"]authorization|\breq(?:uest)?\s*\.\s*cookies\s*\.\s*get\s*\(|\breq(?:uest)?\s*\.\s*headers\s*\.\s*get\s*\(\s*['"]authorization)"#,
         )
         .map_err(|e| format!("auth_marker: {e}"))?;
         Ok(AuxPatterns {
@@ -470,6 +470,77 @@ export async function DELETE(req: Request) {
         assert!(
             scan_unauthed_route_handler(&PathBuf::from("app/api/health/route.ts"), src, a)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn next_003_silent_when_req_cookies_get_is_used() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let src = r#"import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
+    const accessToken = req.cookies.get('mlhcm_at')?.value;
+    if (!accessToken) {
+        return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
+    }
+    return NextResponse.json({ ok: true });
+}
+"#;
+        assert!(
+            scan_unauthed_route_handler(&PathBuf::from("app/api/users/route.ts"), src, a).is_none()
+        );
+    }
+
+    #[test]
+    fn next_003_silent_when_request_cookies_get_is_used() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let src = r#"export async function DELETE(request: Request) {
+    const token = request.cookies.get('session')?.value;
+    if (!token) return new Response(null, { status: 401 });
+    return new Response(null, { status: 204 });
+}
+"#;
+        assert!(
+            scan_unauthed_route_handler(&PathBuf::from("app/api/admin/route.ts"), src, a).is_none()
+        );
+    }
+
+    #[test]
+    fn next_003_silent_when_req_headers_authorization_is_used() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let src = r#"export async function PATCH(req: Request) {
+    const bearer = req.headers.get('authorization');
+    if (!bearer) return new Response(null, { status: 401 });
+    return new Response(null, { status: 200 });
+}
+"#;
+        assert!(
+            scan_unauthed_route_handler(&PathBuf::from("app/api/profile/route.ts"), src, a)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn next_003_silent_when_verify_session_helper_called() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let src = r#"import { verifySession } from '@/lib/auth';
+
+export async function PUT(req: Request) {
+    const session = await verifySession(req);
+    if (!session) return new Response(null, { status: 401 });
+    return new Response(null, { status: 200 });
+}
+"#;
+        assert!(
+            scan_unauthed_route_handler(&PathBuf::from("app/api/users/route.ts"), src, a).is_none()
         );
     }
 
