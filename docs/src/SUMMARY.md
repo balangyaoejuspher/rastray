@@ -74,6 +74,11 @@
 
 - [RSTR-AXUM-001 — CORS Any origin combined with allow_credentials(true)](./rules/RSTR-AXUM-001.md)
 
+# Django (framework-aware)
+
+- [RSTR-DJANGO-001 — settings file declares DEBUG = True](./rules/RSTR-DJANGO-001.md)
+- [RSTR-DJANGO-002 — settings file declares ALLOWED_HOSTS = ['*']](./rules/RSTR-DJANGO-002.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)

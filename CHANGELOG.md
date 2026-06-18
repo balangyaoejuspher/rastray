@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Django framework-aware analyzer family** — fourth framework
+  family gated by `ProjectFingerprint`, second Python framework
+  after the existing CSRF rule. Two settings-file misconfiguration
+  rules ship in this first cut, scoped to `.py` files inside a
+  project whose Python manifest (`pyproject.toml`,
+  `requirements.txt`, `Pipfile`, `poetry.lock`, or `uv.lock`)
+  declares `django`. Both rules are further scoped at the file
+  level to "looks like a Django settings module" (basename
+  `settings.py` / `base.py` / `production.py` / `prod.py` or
+  path under a `settings/` directory, AND the file contains an
+  `INSTALLED_APPS = ` or `MIDDLEWARE = ` declaration):
+
+  - `RSTR-DJANGO-001` (`High`) — `DEBUG = True` declared as a
+    bare literal in a Django settings module. Shipping a debug
+    Django to production exposes full tracebacks, `os.environ`,
+    `SECRET_KEY`, DB credentials, and template source on every
+    500. Env-driven forms (`DEBUG = os.environ.get(...).lower() == 'true'`)
+    and `DEBUG = False` are not flagged. The check requires
+    Django settings markers in the file so coincidentally-named
+    `settings.py` files outside Django stay quiet.
+  - `RSTR-DJANGO-002` (`Critical`) — `ALLOWED_HOSTS = ['*']`
+    (single- or double-quoted) declared in a Django settings
+    module. Wildcard `ALLOWED_HOSTS` enables HTTP Host header
+    injection — cache poisoning, password-reset link poisoning,
+    SSRF via host-relative URLs in transactional email.
+    Explicit host lists, env-driven lists, and the leading-dot
+    Django subdomain shorthand (`['.example.com']`) are all
+    safe and not flagged.
+
+  The analyzer overrides `Analyzer::wants` to return `false`
+  when no Django project is fingerprinted, so on a non-Django
+  repository it costs zero per-file work. 13 new unit tests
+  cover both rules' positives and negatives, the settings-file
+  detector (basename + path + content markers + non-Django
+  rejection), the `wants` predicate in both directions, and an
+  end-to-end fingerprint-scoped scan that confirms findings
+  fire only on settings files inside the Django project root
+  and not on coincidentally-named files in sibling projects.
+
 ## [0.17.0] - 2026-06-18
 
 ### Added
