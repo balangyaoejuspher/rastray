@@ -79,6 +79,11 @@
 - [RSTR-DJANGO-001 — settings file declares DEBUG = True](./rules/RSTR-DJANGO-001.md)
 - [RSTR-DJANGO-002 — settings file declares ALLOWED_HOSTS = ['*']](./rules/RSTR-DJANGO-002.md)
 
+# Flask (framework-aware)
+
+- [RSTR-FLASK-001 — Flask app enables the Werkzeug debugger](./rules/RSTR-FLASK-001.md)
+- [RSTR-FLASK-002 — Flask SECRET_KEY assigned from a string literal](./rules/RSTR-FLASK-002.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)

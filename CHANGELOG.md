@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Flask framework-aware analyzer family** — fifth framework
+  in the framework-aware track (alongside NestJS, Next.js, Axum,
+  and Django). Two production-grade checks:
+
+  - **`RSTR-FLASK-001`** (`Critical`) — flags `app.run(debug=True)`,
+    `app.config['DEBUG'] = True`, and `app.debug = True`. The
+    Werkzeug debugger exposes an interactive Python console at
+    `/console` on any 500 response; the PIN protection is
+    deterministic and recoverable, so this is effectively
+    remote code execution in production.
+
+  - **`RSTR-FLASK-002`** (`High`) — flags `SECRET_KEY` assigned
+    from a plain string literal (`app.config['SECRET_KEY'] = '...'`
+    or `app.secret_key = '...'`). Anyone with read access to the
+    source can forge any session cookie, CSRF token, or
+    `itsdangerous`-signed URL. Env-driven loads, `secrets.token_hex()`,
+    and f-strings are deliberately silent.
+
+  Both rules are gated on `Framework::Flask` in the project
+  fingerprint (a Python manifest must declare `flask`) AND on the
+  file containing `from flask import` or `import flask`, so they
+  stay silent on repos that merely vendor Flask-like helpers
+  without using Flask itself.
+
 ### Changed
 
 - **`RSTR-PERF-101` (`await` inside a loop) severity downgraded
