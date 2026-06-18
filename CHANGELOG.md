@@ -62,6 +62,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **`RSTR-XSS-002` (DOM-based XSS via `innerHTML` / `outerHTML`)
+  migrated from regex to tree-sitter AST.** The previous regex
+  fired on the same byte sequence regardless of context, so
+  `// el.innerHTML = location.hash;` (a comment), `const docs
+  = 'el.innerHTML = location.hash';` (a string literal), and
+  `const tpl = \`el.innerHTML = location.hash\`;` (a template
+  literal) all produced false positives. The AST query
+  reasons about `assignment_expression` nodes whose left-hand
+  side is a `member_expression` with property `innerHTML` /
+  `outerHTML` and whose right-hand side's chain root is one of
+  the documented dom-source identifiers (`location` / `window.name`
+  / `document.URL|cookie|referrer|baseURI|documentURI`). Comments,
+  strings, template literals, and JSX attributes are now
+  silent by construction; the detector also recovers gracefully
+  on files with syntax errors (returns zero findings instead of
+  exiting the analyzer).
+
+  Recall is preserved: trailing member chains (`location.search
+  .toLowerCase()`) and method-call wrappers on the dom-source
+  root are still flagged, matching the prior regex's semantics.
+  Severity (`High`), help text, and rule code are unchanged.
+  No public-API breakage; downstream tooling that consumes
+  finding JSON sees the same code / category / severity, just
+  with a more accurate `location.line` / `column` derived from
+  the AST node bounds.
+
+  Lays the groundwork for migrating other JS / TS rules
+  (`RSTR-XSS-003` `document.write`, future DOM sinks) to AST
+  detection on the same infrastructure.
+
 - **`RSTR-PERF-101` (`await` inside a loop) severity downgraded
   from `Medium` to `Low`.** Triage on a real-world Nx monorepo
   (`apps/api/src` NestJS, `apps/web/components` Next.js, plus

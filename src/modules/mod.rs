@@ -25,6 +25,7 @@ pub mod ssrf;
 pub mod ssti;
 pub mod webapp_config;
 pub mod xss;
+pub mod xss_ts;
 pub mod xxe;
 
 pub mod axum;
