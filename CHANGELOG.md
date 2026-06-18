@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Axum framework-aware analyzer family** — third framework
+  family gated by `ProjectFingerprint`. One rule ships in this
+  first cut, scoped to Rust source files (`.rs`) inside a
+  project whose `Cargo.toml` lists `axum`:
+  - `RSTR-AXUM-001` (`High`) — a `tower_http::cors::CorsLayer`
+    that combines `.allow_origin(Any)` (or
+    `tower_http::cors::Any` / `cors::Any` qualified form) with
+    `.allow_credentials(true)` in the same file. The CORS
+    specification forbids this combination at the browser
+    level — browsers silently strip cookies and the
+    `Authorization` header — and it indicates a configuration
+    bug whichever direction the team intended. Explicit
+    origin allow-lists with credentials, and `Any` without
+    credentials, are both safe and not flagged.
+
+  The analyzer overrides `Analyzer::wants` to return `false`
+  when no Axum project is fingerprinted, so on a non-Axum
+  repository it costs zero per-file work. 8 new unit tests
+  cover the flagged form, the qualified form
+  (`tower_http::cors::Any`), the two safe shapes (origin
+  without credentials; explicit allow-list with credentials),
+  the `wants` predicate in both directions, and an end-to-end
+  fingerprint-scoped scan that confirms findings fire only on
+  files inside the Axum project root.
+
 ### Changed
 
 - **Rails-specific rules now require a Rails project fingerprint

@@ -70,6 +70,10 @@
 - [RSTR-NEXT-002 — server action without input validation](./rules/RSTR-NEXT-002.md)
 - [RSTR-NEXT-003 — App Router route handler missing auth reference](./rules/RSTR-NEXT-003.md)
 
+# Axum (framework-aware)
+
+- [RSTR-AXUM-001 — CORS Any origin combined with allow_credentials(true)](./rules/RSTR-AXUM-001.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)

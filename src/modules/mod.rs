@@ -24,6 +24,8 @@ pub mod webapp_config;
 pub mod xss;
 pub mod xxe;
 
+pub mod axum;
+
 use thiserror::Error;
 
 use crate::cli::Cli;
@@ -70,6 +72,7 @@ pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Se
         Box::new(memory::MemoryAnalyzer::new()),
         Box::new(nestjs::NestjsAnalyzer::new()),
         Box::new(nextjs::NextjsAnalyzer::new()),
+        Box::new(axum::AxumAnalyzer::new()),
         Box::new(redos::RedosAnalyzer::new()),
         Box::new(custom_rules::CustomRulesAnalyzer::new(&config.custom_rules)),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
