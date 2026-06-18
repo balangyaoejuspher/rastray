@@ -58,6 +58,28 @@ export class UsersController {
 }
 ```
 
+Projects that register a global guard via `APP_GUARD` in any
+`*.module.ts` are auto-detected and silenced for the entire
+project — no per-controller suppression needed:
+
+```typescript
+// app.module.ts
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+
+@Module({
+    providers: [
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+    ],
+})
+export class AppModule {}
+```
+
+With the above in place, every controller in the project is
+treated as globally guarded; this rule does not fire on any of
+them. This matches the dominant production pattern (auth wired
+once at the module root, not repeated on every controller).
+
 ```typescript
 @Controller('users')
 @Roles('admin')

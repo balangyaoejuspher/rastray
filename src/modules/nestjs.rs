@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -43,6 +44,7 @@ impl Analyzer for NestjsAnalyzer {
         if project_roots.is_empty() {
             return Ok(findings);
         }
+        let globally_guarded = detect_globally_guarded_projects(&project_roots, crawl, aux);
         for file in &crawl.files {
             if file.kind != FileKind::Source {
                 continue;
@@ -84,7 +86,12 @@ impl Analyzer for NestjsAnalyzer {
                 }
             }
             if let Some(finding) = scan_unguarded_controller(&file.path, &contents, aux) {
-                findings.push(finding);
+                let in_globally_guarded = globally_guarded
+                    .iter()
+                    .any(|root| file.path.starts_with(root));
+                if !in_globally_guarded {
+                    findings.push(finding);
+                }
             }
         }
         Ok(findings)
@@ -121,6 +128,7 @@ struct AuxPatterns {
     controller: Regex,
     mutation: Regex,
     guard: Regex,
+    app_guard: Regex,
 }
 
 fn compiled_patterns() -> Result<&'static [CompiledPattern], AnalyzerError> {
@@ -159,10 +167,13 @@ fn compiled_aux_patterns() -> Result<&'static AuxPatterns, AnalyzerError> {
             .map_err(|e| format!("mutation regex: {e}"))?;
         let guard = Regex::new(r"@(?:UseGuards|Roles|Auth|Public|SkipAuth)\s*\(")
             .map_err(|e| format!("guard regex: {e}"))?;
+        let app_guard =
+            Regex::new(r"\bAPP_GUARD\b").map_err(|e| format!("app_guard regex: {e}"))?;
         Ok(AuxPatterns {
             controller,
             mutation,
             guard,
+            app_guard,
         })
     });
     match cached {
@@ -173,6 +184,59 @@ fn compiled_aux_patterns() -> Result<&'static AuxPatterns, AnalyzerError> {
         }),
     }
 }
+
+fn detect_globally_guarded_projects(
+    project_roots: &[PathBuf],
+    crawl: &CrawlSummary,
+    aux: &AuxPatterns,
+) -> HashSet<PathBuf> {
+    let mut guarded: HashSet<PathBuf> = HashSet::new();
+    for file in &crawl.files {
+        if file.kind != FileKind::Source {
+            continue;
+        }
+        let Some(name) = file
+            .path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase())
+        else {
+            continue;
+        };
+        if !MODULE_FILE_SUFFIXES
+            .iter()
+            .any(|suffix| name.ends_with(suffix))
+        {
+            continue;
+        }
+        let Some(root) = project_roots
+            .iter()
+            .find(|r| file.path.starts_with(r))
+            .cloned()
+        else {
+            continue;
+        };
+        if guarded.contains(&root) {
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        if aux.app_guard.is_match(&contents) {
+            guarded.insert(root);
+        }
+    }
+    guarded
+}
+
+const MODULE_FILE_SUFFIXES: &[&str] = &[
+    ".module.ts",
+    ".module.tsx",
+    ".module.js",
+    ".module.jsx",
+    ".module.mts",
+    ".module.cts",
+];
 
 fn scan_unguarded_controller(
     path: &std::path::Path,
@@ -342,6 +406,207 @@ mod tests {
             "#;
         assert!(
             scan_unguarded_controller(&PathBuf::from("webhooks.controller.ts"), src, a).is_none()
+        );
+    }
+
+    #[test]
+    fn detect_globally_guarded_projects_finds_app_guard_in_module() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let tmp = std::env::temp_dir().join(format!("rastray-nest-guard-{}", std::process::id()));
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+        let module_src = "import { Module } from '@nestjs/common';\n\
+                          import { APP_GUARD } from '@nestjs/core';\n\
+                          import { JwtAuthGuard } from './auth/jwt-auth.guard';\n\
+                          @Module({ providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }] })\n\
+                          export class AppModule {}\n";
+        let module_file = src_dir.join("app.module.ts");
+        let _ = std::fs::write(&module_file, module_src);
+        let crawl = CrawlSummary {
+            files: vec![DiscoveredFile {
+                path: module_file.clone(),
+                kind: FileKind::Source,
+                size: None,
+            }],
+            ..Default::default()
+        };
+        let guarded = detect_globally_guarded_projects(std::slice::from_ref(&tmp), &crawl, a);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert!(guarded.contains(&tmp));
+    }
+
+    #[test]
+    fn detect_globally_guarded_projects_empty_when_no_app_guard() {
+        let Some(a) = aux() else {
+            return;
+        };
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-nest-no-guard-{}", std::process::id()));
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+        let module_src = "import { Module } from '@nestjs/common';\n\
+                          @Module({ controllers: [], providers: [] })\n\
+                          export class AppModule {}\n";
+        let module_file = src_dir.join("app.module.ts");
+        let _ = std::fs::write(&module_file, module_src);
+        let crawl = CrawlSummary {
+            files: vec![DiscoveredFile {
+                path: module_file.clone(),
+                kind: FileKind::Source,
+                size: None,
+            }],
+            ..Default::default()
+        };
+        let guarded = detect_globally_guarded_projects(std::slice::from_ref(&tmp), &crawl, a);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert!(guarded.is_empty());
+    }
+
+    #[test]
+    fn analyze_silences_nest_002_for_project_with_app_guard() {
+        let tmp = std::env::temp_dir().join(format!(
+            "rastray-nest-guarded-controller-{}",
+            std::process::id()
+        ));
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+
+        let module_src = "import { Module } from '@nestjs/common';\n\
+                          import { APP_GUARD } from '@nestjs/core';\n\
+                          import { JwtAuthGuard } from './auth.guard';\n\
+                          @Module({ providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }] })\n\
+                          export class AppModule {}\n";
+        let module_file = src_dir.join("app.module.ts");
+        let _ = std::fs::write(&module_file, module_src);
+
+        let controller_src = "import { Controller, Post, Body } from '@nestjs/common';\n\
+                              @Controller('users')\n\
+                              export class UsersController {\n\
+                                @Post()\n\
+                                create(@Body() dto: any) {}\n\
+                              }\n";
+        let controller_file = src_dir.join("users.controller.ts");
+        let _ = std::fs::write(&controller_file, controller_src);
+
+        let mut frameworks = BTreeSet::new();
+        frameworks.insert(Framework::Nestjs);
+        let mut languages = BTreeSet::new();
+        languages.insert(Language::TypeScript);
+        let mut ecosystems = BTreeSet::new();
+        ecosystems.insert(Ecosystem::Npm);
+
+        let crawl = CrawlSummary {
+            files: vec![
+                DiscoveredFile {
+                    path: module_file.clone(),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+                DiscoveredFile {
+                    path: controller_file.clone(),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+            ],
+            skipped: 0,
+            errors: vec![],
+            fingerprint: ProjectFingerprint {
+                languages,
+                ecosystems,
+                frameworks,
+                projects: vec![DetectedProject {
+                    root: tmp.clone(),
+                    manifest: tmp.join("package.json"),
+                    language: Language::TypeScript,
+                    ecosystem: Some(Ecosystem::Npm),
+                    frameworks: vec![Framework::Nestjs],
+                }],
+            },
+        };
+
+        let findings = NestjsAnalyzer::new().analyze(&crawl).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let nest_002_count = findings
+            .iter()
+            .filter(|f| f.code == "RSTR-NEST-002")
+            .count();
+        assert_eq!(
+            nest_002_count, 0,
+            "expected NEST-002 to be silenced in a project with APP_GUARD, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn analyze_still_fires_nest_002_for_project_without_app_guard() {
+        let tmp =
+            std::env::temp_dir().join(format!("rastray-nest-unguarded-{}", std::process::id()));
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+
+        let module_src = "import { Module } from '@nestjs/common';\n\
+                          @Module({ controllers: [] })\n\
+                          export class AppModule {}\n";
+        let module_file = src_dir.join("app.module.ts");
+        let _ = std::fs::write(&module_file, module_src);
+
+        let controller_src = "import { Controller, Post, Body } from '@nestjs/common';\n\
+                              @Controller('users')\n\
+                              export class UsersController {\n\
+                                @Post()\n\
+                                create(@Body() dto: any) {}\n\
+                              }\n";
+        let controller_file = src_dir.join("users.controller.ts");
+        let _ = std::fs::write(&controller_file, controller_src);
+
+        let mut frameworks = BTreeSet::new();
+        frameworks.insert(Framework::Nestjs);
+        let mut languages = BTreeSet::new();
+        languages.insert(Language::TypeScript);
+        let mut ecosystems = BTreeSet::new();
+        ecosystems.insert(Ecosystem::Npm);
+
+        let crawl = CrawlSummary {
+            files: vec![
+                DiscoveredFile {
+                    path: module_file.clone(),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+                DiscoveredFile {
+                    path: controller_file.clone(),
+                    kind: FileKind::Source,
+                    size: None,
+                },
+            ],
+            skipped: 0,
+            errors: vec![],
+            fingerprint: ProjectFingerprint {
+                languages,
+                ecosystems,
+                frameworks,
+                projects: vec![DetectedProject {
+                    root: tmp.clone(),
+                    manifest: tmp.join("package.json"),
+                    language: Language::TypeScript,
+                    ecosystem: Some(Ecosystem::Npm),
+                    frameworks: vec![Framework::Nestjs],
+                }],
+            },
+        };
+
+        let findings = NestjsAnalyzer::new().analyze(&crawl).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let nest_002_count = findings
+            .iter()
+            .filter(|f| f.code == "RSTR-NEST-002")
+            .count();
+        assert_eq!(
+            nest_002_count, 1,
+            "expected NEST-002 to fire in a project without APP_GUARD, got {findings:?}"
         );
     }
 
