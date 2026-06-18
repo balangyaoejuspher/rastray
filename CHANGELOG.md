@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **`RSTR-PERF-101` (`await` inside a loop) severity downgraded
+  from `Medium` to `Low`.** Triage on a real-world Nx monorepo
+  (`apps/api/src` NestJS, `apps/web/components` Next.js, plus
+  `infrastructure/scripts/*.mjs` setup scripts) showed 67 hits
+  where ~84% are in production code, but the dominant shapes are
+  legitimate sequential patterns the suggested `Promise.all`
+  rewrite does not apply to: cursor-based pagination
+  (`while (hasMore) { const page = await api.next(cursor); cursor = page.next; }`),
+  transactional iteration (`for (...) await tx.update(...)`),
+  stream consumption (`for await (const chunk of readable)`),
+  and rate-limited APIs. The rule is a true positive at the AST
+  level but the recommended fix is not always actionable.
+
+  Downgrading to `Low` makes the rule advisory rather than a
+  default-fail-on signal at the typical `--fail-on high` /
+  `medium` thresholds. The rule message and help text are
+  rewritten to call out the common legitimate cases and steer
+  the user toward suppression-with-reason
+  (`// rastray-ignore: RSTR-PERF-101 -- <why>`) instead of a
+  forced rewrite. The docs page gets a "what does and does not
+  apply" section showing the four common sequential shapes that
+  fire but are not actionable.
+
+  No detection-logic change; truly parallelisable shapes (a
+  for-of over independent fetches) still surface, just at the
+  lower severity.
+
 ### Added
 
 - **Django framework-aware analyzer family** — fourth framework
