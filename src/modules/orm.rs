@@ -5,6 +5,7 @@ use regex::Regex;
 
 use crate::cli::Severity;
 use crate::crawler::{CrawlSummary, FileKind};
+use crate::fingerprint::Framework;
 use crate::reporter::{Category, Finding, Location};
 
 use super::{Analyzer, AnalyzerError};
@@ -25,6 +26,7 @@ impl Analyzer for OrmAnalyzer {
 
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
         let patterns = compiled_patterns()?;
+        let rails_active = crawl.fingerprint.frameworks.contains(&Framework::Rails);
         let mut findings = Vec::new();
         for file in &crawl.files {
             if file.kind != FileKind::Source {
@@ -44,6 +46,9 @@ impl Analyzer for OrmAnalyzer {
             };
             for pattern in patterns {
                 if !pattern.extensions.iter().any(|e| *e == ext) {
+                    continue;
+                }
+                if !rails_active && RAILS_GATED_CODES.contains(&pattern.code) {
                     continue;
                 }
                 for m in pattern.regex.find_iter(&contents) {
@@ -86,6 +91,8 @@ struct CompiledPattern {
 const JS_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 const PY_EXTENSIONS: &[&str] = &["py"];
 const RB_EXTENSIONS: &[&str] = &["rb"];
+
+const RAILS_GATED_CODES: &[&str] = &["RSTR-ORM-003", "RSTR-ORM-005"];
 
 const TRAILER_MASS_ASSIGN: &str =
     "spreads a request body directly into an ORM create/update — mass-assignment risk: any field name in the request (e.g. `isAdmin`, `role`, `verified`) will be written even if it was not in the form";
@@ -262,12 +269,24 @@ mod tests {
     }
 
     fn run_on(name: &str, body: &str) -> Vec<Finding> {
+        run_on_with_framework(name, body, None)
+    }
+
+    fn run_on_rails(name: &str, body: &str) -> Vec<Finding> {
+        run_on_with_framework(name, body, Some(Framework::Rails))
+    }
+
+    fn run_on_with_framework(name: &str, body: &str, framework: Option<Framework>) -> Vec<Finding> {
         let Some(dir) = tempdir() else {
             return Vec::new();
         };
         let path = dir.join(name);
         if let Ok(mut f) = std::fs::File::create(&path) {
             let _ = f.write_all(body.as_bytes());
+        }
+        let mut fingerprint = crate::fingerprint::ProjectFingerprint::default();
+        if let Some(fw) = framework {
+            fingerprint.frameworks.insert(fw);
         }
         let crawl = CrawlSummary {
             files: vec![DiscoveredFile {
@@ -277,7 +296,7 @@ mod tests {
             }],
             skipped: 0,
             errors: vec![],
-            fingerprint: Default::default(),
+            fingerprint,
         };
         let result = OrmAnalyzer::new().analyze(&crawl).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&dir);
@@ -327,7 +346,7 @@ mod tests {
     #[test]
     fn rails_update_with_params_section_is_flagged() {
         let body = "@user.update(params[:user])";
-        let findings = run_on("a.rb", body);
+        let findings = run_on_rails("a.rb", body);
         assert!(findings.iter().any(|f| f.code == "RSTR-ORM-003"));
     }
 
@@ -379,7 +398,7 @@ mod tests {
     #[test]
     fn rails_update_with_strong_params_is_not_flagged() {
         let body = "@user.update(params.require(:user).permit(:name, :email))";
-        let findings = run_on("a.rb", body);
+        let findings = run_on_rails("a.rb", body);
         assert!(
             findings.is_empty(),
             "Strong Parameters are the safe form: {findings:?}"
@@ -440,7 +459,7 @@ mod tests {
             .unwrap_or_default();
         assert!(py_help.contains("pydantic") || py_help.contains("ModelForm"));
 
-        let rb_findings = run_on("a.rb", "@user.update(params[:user])");
+        let rb_findings = run_on_rails("a.rb", "@user.update(params[:user])");
         let rb_help = rb_findings
             .iter()
             .find(|f| f.code == "RSTR-ORM-003")
@@ -461,7 +480,7 @@ mod tests {
         let body = r#"def user_params
   params.require(:user).permit!
 end"#;
-        let findings = run_on("a.rb", body);
+        let findings = run_on_rails("a.rb", body);
         assert!(findings.iter().any(|f| f.code == "RSTR-ORM-005"));
     }
 
@@ -470,7 +489,29 @@ end"#;
         let body = r#"def user_params
   params.require(:user).permit(:email, :first_name, :last_name)
 end"#;
-        let findings = run_on("a.rb", body);
+        let findings = run_on_rails("a.rb", body);
         assert!(!findings.iter().any(|f| f.code == "RSTR-ORM-005"));
+    }
+
+    #[test]
+    fn rails_orm_rules_silenced_when_rails_fingerprint_absent() {
+        let body = "@user.update(params[:user])";
+        let findings = run_on("a.rb", body);
+        assert!(
+            !findings.iter().any(|f| f.code == "RSTR-ORM-003"),
+            "expected RSTR-ORM-003 to be silenced without Rails fingerprint, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn rails_open_permit_silenced_when_rails_fingerprint_absent() {
+        let body = r#"def user_params
+  params.require(:user).permit!
+end"#;
+        let findings = run_on("a.rb", body);
+        assert!(
+            !findings.iter().any(|f| f.code == "RSTR-ORM-005"),
+            "expected RSTR-ORM-005 to be silenced without Rails fingerprint, got {findings:?}"
+        );
     }
 }
