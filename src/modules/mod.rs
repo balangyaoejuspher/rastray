@@ -2,6 +2,7 @@ pub mod crypto;
 pub mod custom_rules;
 pub mod dependencies;
 pub mod deserialization;
+pub mod django;
 pub mod gha;
 pub mod iac;
 pub mod injection;
@@ -73,6 +74,7 @@ pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Se
         Box::new(nestjs::NestjsAnalyzer::new()),
         Box::new(nextjs::NextjsAnalyzer::new()),
         Box::new(axum::AxumAnalyzer::new()),
+        Box::new(django::DjangoAnalyzer::new()),
         Box::new(redos::RedosAnalyzer::new()),
         Box::new(custom_rules::CustomRulesAnalyzer::new(&config.custom_rules)),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
