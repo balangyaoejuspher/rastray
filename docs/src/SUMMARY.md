@@ -84,6 +84,10 @@
 - [RSTR-FLASK-001 — Flask app enables the Werkzeug debugger](./rules/RSTR-FLASK-001.md)
 - [RSTR-FLASK-002 — Flask SECRET_KEY assigned from a string literal](./rules/RSTR-FLASK-002.md)
 
+# Spring Boot (framework-aware)
+
+- [RSTR-SPRING-001 — Spring Security allows unauthenticated access to a broad path](./rules/RSTR-SPRING-001.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)
