@@ -8,6 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Spring Boot framework-aware analyzer family** — sixth
+  framework in the framework-aware track (joining NestJS,
+  Next.js, Axum, Django, and Flask). One production-grade check
+  in this release:
+
+  - **`RSTR-SPRING-001`** (`High`) — flags
+    `.requestMatchers("/**").permitAll()`,
+    `.antMatchers("/api/**").permitAll()`,
+    `.requestMatchers("/api/v1/**").permitAll()`,
+    and similar broad-path public-access declarations in Spring
+    Security configuration. Inverts the intended Spring Security
+    default of "deny by default" into "allow by default";
+    endpoints added later under the same prefix silently inherit
+    the public access. Path-scoped role checks, specific allow-
+    listed endpoints, and `permitAll()` on a different matcher
+    in the same block are deliberately silent. Detection is
+    direct-chain only (`matcher().permitAll()` on the same
+    fluent call) for high precision against sibling-matcher
+    false positives.
+
+  Gated on `Framework::SpringBoot` in the project fingerprint
+  (a Maven/Gradle manifest must declare `spring-boot-starter` or
+  `org.springframework.boot`) AND on the file containing a
+  Spring Security import / `@EnableWebSecurity` /
+  `SecurityFilterChain` / `HttpSecurity` marker.
+
+  Supports Java (`.java`) and Kotlin (`.kt`).
+
 - **Flask framework-aware analyzer family** — fifth framework
   in the framework-aware track (alongside NestJS, Next.js, Axum,
   and Django). Two production-grade checks:

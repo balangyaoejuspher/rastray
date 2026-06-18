@@ -20,6 +20,7 @@ pub mod path_traversal;
 pub mod performance;
 pub mod redos;
 pub mod secrets;
+pub mod spring_boot;
 pub mod ssrf;
 pub mod ssti;
 pub mod webapp_config;
@@ -77,6 +78,7 @@ pub fn default_registry(cli: &Cli, config: &Config) -> Vec<Box<dyn Analyzer + Se
         Box::new(axum::AxumAnalyzer::new()),
         Box::new(django::DjangoAnalyzer::new()),
         Box::new(flask::FlaskAnalyzer::new()),
+        Box::new(spring_boot::SpringBootAnalyzer::new()),
         Box::new(redos::RedosAnalyzer::new()),
         Box::new(custom_rules::CustomRulesAnalyzer::new(&config.custom_rules)),
         Box::new(dependencies::DependenciesAnalyzer::with_options(
