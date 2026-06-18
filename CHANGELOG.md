@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Next.js framework-aware analyzer family** — second framework
+  family gated by `ProjectFingerprint`. Three rules ship in this
+  cut, all scoped to TypeScript / JavaScript source files (`.ts`,
+  `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`) inside a project whose
+  `package.json` lists `next`. In an Nx / pnpm monorepo with a
+  Next.js front-end (e.g. `apps/web`) beside a NestJS API
+  (e.g. `apps/api`), the rules fire only on the Next.js sub-tree:
+  - `RSTR-NEXT-001` (`High`) — same pattern as `RSTR-NEST-001`
+    but gated to Next.js projects: `prisma.<model>.<delete|update|findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow>({ where: { id: <bare-identifier> } })`.
+    Catches the destructured-param case common in
+    `getServerSideProps`, server actions, and route handlers.
+    Explicit `Number(id)` / `parseInt(id, 10)` / `+id` /
+    `BigInt(id)` wrappers and qualified accesses are not flagged.
+  - `RSTR-NEXT-002` (`High`) — a file starting with the
+    `'use server'` directive that contains an `export async function`
+    plus a destructive Prisma sink (`delete` / `deleteMany` /
+    `update` / `updateMany` / `create` / `createMany` / `upsert`)
+    but **no input-validation library reference** (`zod`,
+    `valibot`, `yup`, `joi`, `superstruct`, `class-validator`,
+    or any `.parse(` / `safeParse` call). Server actions are
+    public HTTP endpoints; parameter validation is mandatory.
+  - `RSTR-NEXT-003` (`Medium`) — an App Router `route.ts` /
+    `route.tsx` / `route.js` etc. file under `app/` that exports
+    a mutation method (`POST` / `PUT` / `PATCH` / `DELETE`) but
+    has no reference to an auth helper anywhere in the file
+    (`auth()`, `getServerSession()`, `getToken()`, `currentUser()`,
+    `getUser()`, `requireAuth()`, `requireSession()`,
+    `cookies().get(...)`, or `headers().get('authorization')`).
+    Severity intentionally below `RSTR-NEST-002` because Next.js
+    apps sometimes wire all auth in `middleware.ts`, which this
+    file-scope check cannot see.
+
+  The analyzer overrides `Analyzer::wants` to return `false` when
+  no Next.js project is fingerprinted, so on a non-Next.js
+  repository it costs zero per-file work. 14 new unit tests cover
+  the NEXT-001 regex (positives / negatives), the NEXT-002
+  per-file heuristic (validation-library detection, destructive-
+  sink detection, directive detection), the NEXT-003 path
+  recogniser plus mutation-export / auth-marker detection, the
+  `wants` predicate in both directions, and an end-to-end
+  fingerprint-scoped scan that confirms findings fire only on
+  files inside the Next.js project root.
+
 ## [0.16.0] - 2026-06-18
 
 ### Added

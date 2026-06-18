@@ -64,6 +64,12 @@
 - [RSTR-NEST-001 — Prisma destructive call with bare id](./rules/RSTR-NEST-001.md)
 - [RSTR-NEST-002 — controller exposes a mutation without any guard](./rules/RSTR-NEST-002.md)
 
+# Next.js (framework-aware)
+
+- [RSTR-NEXT-001 — Prisma destructive call with bare id](./rules/RSTR-NEXT-001.md)
+- [RSTR-NEXT-002 — server action without input validation](./rules/RSTR-NEXT-002.md)
+- [RSTR-NEXT-003 — App Router route handler missing auth reference](./rules/RSTR-NEXT-003.md)
+
 # Server-side request forgery
 
 - [RSTR-SSRF-001 — Node fetch / axios with request input](./rules/RSTR-SSRF-001.md)
