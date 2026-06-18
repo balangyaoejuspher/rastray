@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **`RSTR-NEXT-003` no longer false-positives on cookie-based BFF
+  auth patterns.** The auth-marker recogniser now matches
+  `req.cookies.get(...)`, `request.cookies.get(...)`,
+  `req.headers.get('authorization')`,
+  `request.headers.get('authorization')`, and the helper names
+  `verifySession` / `verifyToken` in addition to the existing set
+  (`auth()`, `getServerSession()`, `getToken()`, `currentUser()`,
+  `getUser()`, `requireAuth()`, `requireSession()`,
+  `cookies().get(...)`, `headers().get('authorization')`).
+  Validated on a real-world Nx monorepo (Next.js + NestJS + Rust):
+  the rule went from 4 findings to 0, all 4 previously-flagged
+  routes correctly silenced because they read cookie / header
+  auth tokens early in the handler.
+
+  4 new unit tests cover the new patterns (``req.cookies.get(...)``,
+  ``request.cookies.get(...)``, ``req.headers.get('authorization')``,
+  and a custom ``verifySession`` helper). The existing "no auth
+  helper anywhere" positive test continues to fire.
+
 ### Added
 
 - **Next.js framework-aware analyzer family** — second framework
