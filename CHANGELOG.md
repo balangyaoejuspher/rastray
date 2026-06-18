@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Rails-specific rules now require a Rails project fingerprint
+  to fire.** Five existing rules (`RSTR-INJ-008` ActiveRecord
+  `.where` with string interpolation, `RSTR-INJ-009`
+  `.constantize` / `.classify` / `.safe_constantize` on params,
+  `RSTR-INJ-010` `render inline:` / `text:` with params,
+  `RSTR-ORM-003` raw `update(params[...])` / `create(params[...])`,
+  `RSTR-ORM-005` `params.permit!`) previously fired on any `.rb`
+  source regardless of whether the project was actually a Rails
+  app. They now also require `Framework::Rails` in the project
+  fingerprint (detected from a `Gemfile` / `Gemfile.lock`
+  declaring `rails`).
+
+  Net effect: a `.rb` script in a non-Rails repository
+  (administrative scripts, packaging tooling, `Rakefile`-style
+  one-offs) no longer produces phantom Rails findings.
+
+  6 new unit tests pin both directions across the two analyzers
+  (`injection` and `orm`): Rails rules fire when the Rails
+  fingerprint is present, silenced when absent; non-Rails rules
+  in the same analyzers (e.g. `RSTR-INJ-001` SQL f-string) are
+  unaffected.
+
 ### Fixed
 
 - **`RSTR-NEST-002` now respects project-wide `APP_GUARD`

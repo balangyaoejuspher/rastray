@@ -5,6 +5,7 @@ use regex::Regex;
 
 use crate::cli::Severity;
 use crate::crawler::{CrawlSummary, FileKind};
+use crate::fingerprint::Framework;
 use crate::reporter::{Category, Finding, Location};
 
 use super::{Analyzer, AnalyzerError};
@@ -25,6 +26,8 @@ impl Analyzer for InjectionAnalyzer {
 
     fn analyze(&self, crawl: &CrawlSummary) -> Result<Vec<Finding>, AnalyzerError> {
         let patterns = compiled_patterns()?;
+        let frameworks = &crawl.fingerprint.frameworks;
+        let rails_active = frameworks.contains(&Framework::Rails);
         let mut findings = Vec::new();
         for file in &crawl.files {
             if file.kind != FileKind::Source {
@@ -44,6 +47,9 @@ impl Analyzer for InjectionAnalyzer {
             };
             for pattern in patterns {
                 if !pattern.extensions.iter().any(|e| *e == ext) {
+                    continue;
+                }
+                if !rails_active && RAILS_GATED_CODES.contains(&pattern.code) {
                     continue;
                 }
                 for m in pattern.regex.find_iter(&contents) {
@@ -92,6 +98,8 @@ const GO_EXTENSIONS: &[&str] = &["go"];
 const PHP_EXTENSIONS: &[&str] = &["php"];
 const RB_EXTENSIONS: &[&str] = &["rb"];
 const JAVA_EXTENSIONS: &[&str] = &["java", "kt", "kts"];
+
+const RAILS_GATED_CODES: &[&str] = &["RSTR-INJ-008", "RSTR-INJ-009", "RSTR-INJ-010"];
 
 const PATTERN_SPECS: &[PatternSpec] = &[
     PatternSpec {
@@ -532,5 +540,81 @@ mod tests {
             r#"Runtime.getRuntime().exec(new String[] {"ping", host});"#
         ));
         assert!(!any(r#"new ProcessBuilder("git", "log", branch);"#));
+    }
+
+    fn run_analyze_with_framework(
+        name: &str,
+        body: &str,
+        framework: Option<Framework>,
+    ) -> Vec<Finding> {
+        use crate::crawler::DiscoveredFile;
+        let dir = std::env::temp_dir().join(format!(
+            "rastray-inj-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join(name);
+        let _ = std::fs::write(&path, body);
+        let mut fingerprint = crate::fingerprint::ProjectFingerprint::default();
+        if let Some(fw) = framework {
+            fingerprint.frameworks.insert(fw);
+        }
+        let crawl = CrawlSummary {
+            files: vec![DiscoveredFile {
+                path: path.clone(),
+                kind: FileKind::Source,
+                size: Some(body.len() as u64),
+            }],
+            skipped: 0,
+            errors: vec![],
+            fingerprint,
+        };
+        let result = InjectionAnalyzer::new().analyze(&crawl).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn rails_inj_rules_fire_when_rails_fingerprint_present() {
+        let body = r#"User.where("id = '#{params[:user][:id]}'")"#;
+        let findings = run_analyze_with_framework("a.rb", body, Some(Framework::Rails));
+        assert!(
+            findings.iter().any(|f| f.code == "RSTR-INJ-008"),
+            "expected RSTR-INJ-008 with Rails fingerprint, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn rails_inj_rules_silenced_without_rails_fingerprint() {
+        let body = r#"User.where("id = '#{params[:user][:id]}'")"#;
+        let findings = run_analyze_with_framework("a.rb", body, None);
+        assert!(
+            !findings.iter().any(|f| f.code == "RSTR-INJ-008"),
+            "expected RSTR-INJ-008 silenced without Rails fingerprint, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn rails_inj_009_silenced_without_rails_fingerprint() {
+        let body = r#"model = params[:class].constantize"#;
+        let findings = run_analyze_with_framework("a.rb", body, None);
+        assert!(
+            !findings.iter().any(|f| f.code == "RSTR-INJ-009"),
+            "expected RSTR-INJ-009 silenced without Rails fingerprint, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn non_rails_inj_rules_unaffected_by_rails_gate() {
+        let body = r#"const result = await db.query(`SELECT * FROM x WHERE id = ${id}`);"#;
+        let findings = run_analyze_with_framework("a.js", body, None);
+        assert!(
+            findings.iter().any(|f| f.code == "RSTR-INJ-001"),
+            "expected RSTR-INJ-001 to fire regardless of fingerprint, got {findings:?}"
+        );
     }
 }
