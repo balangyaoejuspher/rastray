@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **`RSTR-NEST-002` now respects project-wide `APP_GUARD`
+  registrations.** Before this change the rule flagged every
+  controller that declared a mutation handler without a
+  per-class or per-method guard decorator, ignoring NestJS
+  projects that register their auth guard globally via
+  `{ provide: APP_GUARD, useClass: JwtAuthGuard }` in
+  `app.module.ts`. On a real Nx + NestJS monorepo that produced
+  44 false positives out of 44 findings (100% FP rate).
+
+  The analyzer now runs a one-shot pre-pass per NestJS project
+  root: it scans every `*.module.{ts,tsx,js,jsx,mts,cts}` file
+  in the project for an `APP_GUARD` token. If any module
+  registers one, every controller in that project is treated as
+  globally guarded and `RSTR-NEST-002` is silenced for it.
+  Re-validation on the same monorepo: 44 → 0 NEST-002 findings,
+  no other rule counts changed.
+
+  4 new unit tests cover both directions
+  (`detect_globally_guarded_projects` returns the project root
+  when any module has `APP_GUARD`; empty otherwise; analyze()
+  silences NEST-002 in a guarded project; analyze() still fires
+  NEST-002 in an unguarded project).
+
 - **`RSTR-NEXT-003` no longer false-positives on cookie-based BFF
   auth patterns.** The auth-marker recogniser now matches
   `req.cookies.get(...)`, `request.cookies.get(...)`,
