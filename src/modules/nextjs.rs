@@ -404,6 +404,7 @@ export async function getProfile(id: string) {
         assert!(is_app_router_route_file(&PathBuf::from(
             "src/app/api/route.tsx"
         )));
+        #[cfg(windows)]
         assert!(is_app_router_route_file(&PathBuf::from(
             r"C:\repo\app\api\route.ts"
         )));
