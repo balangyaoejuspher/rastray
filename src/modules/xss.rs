@@ -7,6 +7,7 @@ use crate::cli::Severity;
 use crate::crawler::{CrawlSummary, FileKind};
 use crate::reporter::{Category, Finding, Location};
 
+use super::xss_ts;
 use super::{Analyzer, AnalyzerError};
 
 #[derive(Debug, Default)]
@@ -60,6 +61,9 @@ impl Analyzer for XssAnalyzer {
                     );
                 }
             }
+            if JS_EXTENSIONS.iter().any(|e| *e == ext) {
+                findings.extend(xss_ts::analyze_inner_html_dom_xss(&file.path, &contents));
+            }
         }
         Ok(findings)
     }
@@ -111,14 +115,6 @@ const PATTERN_SPECS: &[PatternSpec] = &[
         severity: Severity::High,
         help: HELP_JS_REFLECTED,
         pattern: r"\bres\.(?:send|end|write)\s*\(\s*req\.(?:body|query|params|cookies|headers)(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*[,)]",
-        extensions: JS_EXTENSIONS,
-    },
-    PatternSpec {
-        code: "RSTR-XSS-002",
-        trailer: TRAILER_DOM_INNER_HTML,
-        severity: Severity::High,
-        help: HELP_JS_DOM,
-        pattern: r"\.(?:innerHTML|outerHTML)\s*=\s*(?:location|window\.name|document\.(?:URL|cookie|referrer|baseURI|documentURI))(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
         extensions: JS_EXTENSIONS,
     },
     PatternSpec {
