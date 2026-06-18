@@ -64,9 +64,9 @@ fn find_await_in_loops(
                 source,
                 cap.node,
                 "RSTR-PERF-101",
-                "await inside a loop serializes async work",
-                Severity::Medium,
-                "consider collecting promises and using Promise.all() to parallelize",
+                "await inside a loop body; if the iterations are independent, Promise.all() parallelises them",
+                Severity::Low,
+                "if the loop body's awaits are independent (no shared transaction, no offset/cursor from the previous iteration, no rate-limit ordering), rewrite as `await Promise.all(items.map(...))`. If the loop is sequential by design (pagination, transactional iteration, stream consumption, ordered side effects) suppress with `// rastray-ignore: RSTR-PERF-101 -- <why>` to record the intent",
             ));
         }
     }
@@ -206,7 +206,7 @@ mod tests {
             .filter(|f| f.code == "RSTR-PERF-101")
             .collect();
         assert_eq!(await_findings.len(), 1);
-        assert_eq!(await_findings[0].severity, Severity::Medium);
+        assert_eq!(await_findings[0].severity, Severity::Low);
     }
 
     #[test]
