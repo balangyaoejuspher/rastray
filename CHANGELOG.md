@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Fuzz harness (cargo-fuzz)** — new top-level [fuzz/](fuzz/) crate
+  with two libFuzzer targets:
+  - [fuzz/fuzz_targets/toml_config.rs](fuzz/fuzz_targets/toml_config.rs) —
+    parses arbitrary UTF-8 against a mirror of the `.rastray.toml` schema
+    used by [src/config.rs](src/config.rs), exercising the same `toml`
+    crate code paths the production loader hits.
+  - [fuzz/fuzz_targets/suppression_directive.rs](fuzz/fuzz_targets/suppression_directive.rs) —
+    runs the suppression directive regex from [src/suppression.rs](src/suppression.rs)
+    against arbitrary input, exercising the `regex` crate against the
+    grammar production scans for.
+
+  Run locally with `cargo +nightly fuzz run toml_config` (or
+  `suppression_directive`). The harness is excluded from the published
+  crate via `exclude = ["fuzz/**"]` in [Cargo.toml](Cargo.toml) and is
+  not part of any workspace, so root-level `cargo check` / `cargo test`
+  are unaffected.
+
 ### Security
 
 - **Cargo lockfile** — bumped `quinn-proto` to `>=0.11.15` (was
