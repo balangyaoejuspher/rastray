@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **OpenSSF Best Practices badge** — linked in the [README](README.md)
+  (project ID 13186). Added a top-level [LICENSE](LICENSE) pointer file
+  that names both [LICENSE-APACHE](LICENSE-APACHE) and
+  [LICENSE-MIT](LICENSE-MIT) so the badge auto-checker stops reporting
+  `license_location` as Unmet on the dual-license layout.
+
 - **Fuzz harness (cargo-fuzz)** — new top-level [fuzz/](fuzz/) crate
   with two libFuzzer targets:
   - [fuzz/fuzz_targets/toml_config.rs](fuzz/fuzz_targets/toml_config.rs) —
