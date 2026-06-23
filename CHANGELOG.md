@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- **Cargo lockfile** — bumped `quinn-proto` to `>=0.11.15` (was
+  `0.11.14`) via `cargo update` to resolve `RUSTSEC-2026-0185` /
+  `GHSA-4w2j-m93h-cj5j` (remote memory exhaustion via unbounded
+  out-of-order stream reassembly). Pulled in transitively via
+  `reqwest → quinn → quinn-proto`; no top-level dependency change.
+
 - **VS Code extension dev dependency** — pinned `undici` to `^7.28.0` via
   `overrides` in [editors/vscode/package.json](editors/vscode/package.json).
   Resolves seven advisories (`GHSA-35p6-xmwp-9g52`, `GHSA-g8m3-5g58-fq7m`,
