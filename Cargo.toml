@@ -18,6 +18,7 @@ exclude = [
     "COMMIT_CONVENTION.md",
     "install/**",
     "rust-toolchain.toml",
+    "fuzz/**",
 ]
 
 [dependencies]
