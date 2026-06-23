@@ -5,6 +5,7 @@
 [![CI](https://github.com/balangyaoejuspher/rastray/actions/workflows/ci.yml/badge.svg)](https://github.com/balangyaoejuspher/rastray/actions/workflows/ci.yml)
 [![Security audit](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml/badge.svg)](https://github.com/balangyaoejuspher/rastray/actions/workflows/audit.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/balangyaoejuspher/rastray/badge)](https://securityscorecards.dev/viewer/?uri=github.com/balangyaoejuspher/rastray)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13186/badge)](https://www.bestpractices.dev/projects/13186)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![MSRV](https://img.shields.io/badge/MSRV-1.86.0-blue.svg)](Cargo.toml)
 
