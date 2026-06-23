@@ -85,5 +85,8 @@
     "@types/vscode": "^1.85.0",
     "typescript": "^5.4.0",
     "@vscode/vsce": "^3.9.2"
+  },
+  "overrides": {
+    "undici": "^7.28.0"
   }
 }

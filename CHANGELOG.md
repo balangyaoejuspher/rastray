@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **VS Code extension dev dependency** — pinned `undici` to `^7.28.0` via
+  `overrides` in [editors/vscode/package.json](editors/vscode/package.json).
+  Resolves seven advisories (`GHSA-35p6-xmwp-9g52`, `GHSA-g8m3-5g58-fq7m`,
+  `GHSA-hm92-r4w5-c3mj`, `GHSA-p88m-4jfj-68fv`, `GHSA-pr7r-676h-xcf6`,
+  `GHSA-vmh5-mc38-953g`, `GHSA-vxpw-j846-p89q`) reported against the
+  transitively-installed `undici@7.27.2` (pulled in via `@vscode/vsce` →
+  `cheerio`). Dev-only — `undici` is not shipped to the runtime VSIX —
+  but the override clears the OSSF Scorecard `Vulnerabilities` finding.
+
 ## [0.18.0] - 2026-06-18
 
 ### Added
