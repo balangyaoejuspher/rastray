@@ -103,7 +103,7 @@ fn scan_detects_aws_key_in_source_file() {
         Some(d) => d,
         None => return,
     };
-    let body = "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n";
+    let body = "const aws = \"AKIAABCDEFGHIJKLMNOP\";\n";
     write_file(&dir, "config.js", body);
 
     let json = match run_json(&dir, &[]) {
@@ -193,7 +193,7 @@ fn secrets_history_detects_blob_purged_from_working_tree() {
         let _ = fs::remove_dir_all(&dir);
         return;
     }
-    if !write_file(&dir, "leaked.env", "AWS_KEY=AKIAIOSFODNN7EXAMPLE\n") {
+    if !write_file(&dir, "leaked.env", "AWS_KEY=AKIAABCDEFGHIJKLMNOP\n") {
         let _ = fs::remove_dir_all(&dir);
         return;
     }
@@ -252,7 +252,7 @@ fn image_scan_detects_secret_in_layer_tarball() {
     let mut inner_tar: Vec<u8> = Vec::new();
     {
         let mut builder = tar::Builder::new(&mut inner_tar);
-        let body = b"AWS_KEY=AKIAIOSFODNN7EXAMPLE\n";
+        let body = b"AWS_KEY=AKIAABCDEFGHIJKLMNOP\n";
         let mut header = tar::Header::new_gnu();
         if header.set_path("etc/leaked.env").is_err() {
             let _ = fs::remove_dir_all(&dir);
@@ -503,7 +503,7 @@ fn rastray_toml_suppress_block_drops_matching_findings() {
         None => return,
     };
 
-    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+    write_file(&dir, "config.js", "const aws = \"AKIAABCDEFGHIJKLMNOP\";\n");
     write_file(
         &dir,
         ".rastray.toml",
@@ -534,7 +534,7 @@ fn rastray_format_markdown_produces_pr_ready_output() {
         None => return,
     };
 
-    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+    write_file(&dir, "config.js", "const aws = \"AKIAABCDEFGHIJKLMNOP\";\n");
 
     let bin = binary_path();
     if !bin.exists() {
@@ -572,7 +572,7 @@ fn rastray_format_html_writes_self_contained_report() {
         Some(d) => d,
         None => return,
     };
-    write_file(&dir, "config.js", "const aws = \"AKIAIOSFODNN7EXAMPLE\";\n");
+    write_file(&dir, "config.js", "const aws = \"AKIAABCDEFGHIJKLMNOP\";\n");
 
     let bin = binary_path();
     if !bin.exists() {
@@ -605,7 +605,7 @@ fn rastray_format_html_writes_self_contained_report() {
     assert!(html.contains("<title>rastray scan"));
     assert!(html.contains("id=\"findings-table\""));
     assert!(html.contains("RSTR-SEC-001"));
-    assert!(!html.contains("AKIAIOSFODNN7EXAMPLE\nconst"));
+    assert!(!html.contains("AKIAABCDEFGHIJKLMNOP\nconst"));
 }
 
 #[test]
