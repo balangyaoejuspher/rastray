@@ -78,6 +78,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- **Cargo lockfile** — bumped `crossbeam-epoch` to `>=0.9.20` (was
+  `0.9.18`) via `cargo update` to resolve `RUSTSEC-2026-0204`
+  (invalid pointer dereference in `fmt::Pointer` impl for `Atomic` /
+  `Shared` when the underlying pointer is null). Transitive dep; no
+  top-level dependency change.
+
 - **Cargo lockfile** — bumped `quinn-proto` to `>=0.11.15` (was
   `0.11.14`) via `cargo update` to resolve `RUSTSEC-2026-0185` /
   `GHSA-4w2j-m93h-cj5j` (remote memory exhaustion via unbounded
