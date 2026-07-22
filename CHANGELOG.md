@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **`FileKind::Test` in the crawler** — new variant of the file
+  classification enum in [src/crawler.rs](src/crawler.rs), applied by
+  path and filename to Rust (`tests/`, `benches/`, `*_test.rs`,
+  `tests.rs`), Go (`*_test.go`), Python (`test_*.py`, `*_test.py`,
+  `conftest.py`, `tests/`), JS/TS (`*.test.*`, `*.spec.*`,
+  `__tests__/`, `cypress/`, `e2e/`), and Ruby (`spec/`, `*_spec.rb`,
+  `*_test.rb`). The check runs after the manifest-filename check so
+  fixtures like `tests/fixtures/package.json` are still classified as
+  `Manifest`, and only fires on directory components or filename
+  patterns that unambiguously mark test code (never on production
+  files like `src/testing.rs` or `src/attest.rs`).
+
+- **Canonical-example allowlist for `RSTR-SEC-001`** — the secrets
+  analyzer in [src/modules/secrets.rs](src/modules/secrets.rs) now
+  skips the well-known AWS documentation example values
+  (`AKIAIOSFODNN7EXAMPLE`, `AKIAIOSFODNN7EXAMPLF`,
+  `AKIA1234567890ABCDEF`) before firing. Structured as a per-rule
+  allowlist so other patterns can grow the same list without further
+  refactoring.
+
 - **OpenSSF Best Practices badge** — linked in the [README](README.md)
   (project ID 13186). Added a top-level [LICENSE](LICENSE) pointer file
   that names both [LICENSE-APACHE](LICENSE-APACHE) and
@@ -30,6 +50,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   crate via `exclude = ["fuzz/**"]` in [Cargo.toml](Cargo.toml) and is
   not part of any workspace, so root-level `cargo check` / `cargo test`
   are unaffected.
+
+### Changed
+
+- **Secrets analyzer skips test files by default** — the `is_scannable`
+  guard in [src/modules/secrets.rs](src/modules/secrets.rs) now
+  excludes `FileKind::Test`. Test suites overwhelmingly embed
+  deliberate placeholder credentials as fixtures; scanning them
+  produced flood-level false positives on real codebases. All
+  analyzers that already restricted themselves to `FileKind::Source`
+  (crypto, injection, deserialization, xxe, …) inherit the same
+  exclusion automatically because test files no longer classify as
+  `Source`.
+
+  On the rastray self-scan this dropped total findings from
+  26 → 9, and every remaining finding is a legitimate true positive
+  (all `RSTR-PERF-001` hits in the report renderer, which is real
+  `push_str(&format!(…))` inside loops).
+
+- **Integration test fixtures for `RSTR-SEC-001`** — updated
+  [tests/integration.rs](tests/integration.rs) to use
+  `AKIAABCDEFGHIJKLMNOP` instead of the AWS-docs canonical example
+  `AKIAIOSFODNN7EXAMPLE` so the tests continue to exercise the
+  detection path after the allowlist was introduced.
 
 ### Security
 

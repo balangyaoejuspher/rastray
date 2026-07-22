@@ -36,6 +36,9 @@ impl Analyzer for SecretsAnalyzer {
             };
             for pattern in patterns {
                 for m in pattern.regex.find_iter(&contents) {
+                    if is_example_value(pattern.code, m.as_str()) {
+                        continue;
+                    }
                     if let Some(threshold) = pattern.min_entropy {
                         if shannon_entropy(m.as_str()) < threshold {
                             continue;
@@ -70,6 +73,9 @@ pub fn scan_text_for_secrets(
     let mut findings = Vec::new();
     for pattern in patterns {
         for m in pattern.regex.find_iter(contents) {
+            if is_example_value(pattern.code, m.as_str()) {
+                continue;
+            }
             if let Some(threshold) = pattern.min_entropy {
                 if shannon_entropy(m.as_str()) < threshold {
                     continue;
@@ -100,6 +106,20 @@ fn is_scannable(kind: FileKind) -> bool {
         FileKind::Manifest | FileKind::Source | FileKind::Config
     )
 }
+
+fn is_example_value(code: &str, value: &str) -> bool {
+    let allowlist = match code {
+        "RSTR-SEC-001" => AWS_ACCESS_KEY_EXAMPLES,
+        _ => return false,
+    };
+    allowlist.contains(&value)
+}
+
+const AWS_ACCESS_KEY_EXAMPLES: &[&str] = &[
+    "AKIAIOSFODNN7EXAMPLE",
+    "AKIAIOSFODNN7EXAMPLF",
+    "AKIA1234567890ABCDEF",
+];
 
 struct PatternSpec {
     code: &'static str,
@@ -342,6 +362,37 @@ mod tests {
         assert!(is_scannable(FileKind::Source));
         assert!(is_scannable(FileKind::Config));
         assert!(!is_scannable(FileKind::Other));
+    }
+
+    #[test]
+    fn is_scannable_excludes_test_files_by_default() {
+        assert!(!is_scannable(FileKind::Test));
+    }
+
+    #[test]
+    fn is_example_value_matches_canonical_aws_docs_examples() {
+        assert!(is_example_value("RSTR-SEC-001", "AKIAIOSFODNN7EXAMPLE"));
+        assert!(is_example_value("RSTR-SEC-001", "AKIAIOSFODNN7EXAMPLF"));
+        assert!(is_example_value("RSTR-SEC-001", "AKIA1234567890ABCDEF"));
+    }
+
+    #[test]
+    fn is_example_value_rejects_real_looking_aws_key() {
+        assert!(!is_example_value("RSTR-SEC-001", "AKIAABCDEFGHIJKLMNOP"));
+    }
+
+    #[test]
+    fn is_example_value_is_scoped_per_rule_code() {
+        assert!(!is_example_value("RSTR-SEC-002", "AKIAIOSFODNN7EXAMPLE"));
+        assert!(!is_example_value("RSTR-SEC-007", "AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn scan_text_skips_canonical_aws_example_end_to_end() {
+        let contents = "let key = \"AKIAIOSFODNN7EXAMPLE\";";
+        let findings = scan_text_for_secrets(contents, std::path::PathBuf::from("synthetic"))
+            .unwrap_or_default();
+        assert!(findings.iter().all(|f| f.code != "RSTR-SEC-001"));
     }
 
     #[test]

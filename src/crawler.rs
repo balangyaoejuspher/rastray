@@ -28,6 +28,7 @@ pub enum FileKind {
     Manifest,
     Source,
     Config,
+    Test,
     Other,
 }
 
@@ -37,6 +38,7 @@ impl FileKind {
             FileKind::Manifest => "manifest",
             FileKind::Source => "source",
             FileKind::Config => "config",
+            FileKind::Test => "test",
             FileKind::Other => "other",
         }
     }
@@ -262,6 +264,10 @@ fn classify_path(path: &Path) -> FileKind {
         return FileKind::Manifest;
     }
 
+    if is_test_path(path, &file_name) {
+        return FileKind::Test;
+    }
+
     if is_dotfile_config(&file_name) {
         return FileKind::Config;
     }
@@ -286,6 +292,71 @@ fn classify_path(path: &Path) -> FileKind {
 fn is_dotfile_config(file_name: &str) -> bool {
     file_name == ".env" || file_name == ".envrc" || file_name.starts_with(".env.")
 }
+
+fn is_test_path(path: &Path, file_name: &str) -> bool {
+    if is_test_filename(file_name) {
+        return true;
+    }
+    for component in path.components() {
+        if let Some(name) = component.as_os_str().to_str() {
+            let lower = name.to_ascii_lowercase();
+            if TEST_DIR_NAMES.contains(&lower.as_str()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_test_filename(file_name: &str) -> bool {
+    if file_name == "conftest.py" || file_name == "tests.rs" {
+        return true;
+    }
+    if file_name.ends_with("_test.go")
+        || file_name.ends_with("_test.rs")
+        || file_name.ends_with("_tests.rs")
+        || file_name.ends_with("_test.py")
+        || file_name.ends_with("_test.rb")
+        || file_name.ends_with("_spec.rb")
+    {
+        return true;
+    }
+    if file_name.starts_with("test_") && (file_name.ends_with(".py") || file_name.ends_with(".rs"))
+    {
+        return true;
+    }
+    TEST_FILENAME_SUFFIXES
+        .iter()
+        .any(|suffix| file_name.ends_with(suffix))
+}
+
+const TEST_DIR_NAMES: &[&str] = &[
+    "tests",
+    "test",
+    "__tests__",
+    "__test__",
+    "benches",
+    "bench",
+    "spec",
+    "specs",
+    "cypress",
+    "e2e",
+];
+
+const TEST_FILENAME_SUFFIXES: &[&str] = &[
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",
+    ".test.mjs",
+    ".test.cjs",
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+    ".spec.mjs",
+    ".spec.cjs",
+];
 
 const MANIFEST_FILES: &[&str] = &[
     "cargo.toml",
@@ -406,6 +477,68 @@ mod tests {
         assert_eq!(classify_path(Path::new("README")), FileKind::Other);
         assert_eq!(classify_path(Path::new("image.png")), FileKind::Other);
         assert_eq!(classify_path(Path::new("archive.tar.gz")), FileKind::Other);
+    }
+
+    #[test]
+    fn classify_recognises_test_directories() {
+        assert_eq!(
+            classify_path(Path::new("tests/integration.rs")),
+            FileKind::Test
+        );
+        assert_eq!(
+            classify_path(Path::new("benches/bench_walk.rs")),
+            FileKind::Test
+        );
+        assert_eq!(
+            classify_path(Path::new("app/src/__tests__/parser.ts")),
+            FileKind::Test
+        );
+        assert_eq!(
+            classify_path(Path::new("cypress/e2e/login.cy.ts")),
+            FileKind::Test
+        );
+        assert_eq!(
+            classify_path(Path::new("services/api/tests/config.yaml")),
+            FileKind::Test
+        );
+        assert_eq!(
+            classify_path(Path::new("spec/models/user_spec.rb")),
+            FileKind::Test
+        );
+    }
+
+    #[test]
+    fn classify_recognises_test_filenames() {
+        assert_eq!(classify_path(Path::new("pkg/foo_test.go")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("test_utils.py")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("utils_test.py")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("conftest.py")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("parser.test.ts")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("parser.spec.jsx")), FileKind::Test);
+        assert_eq!(classify_path(Path::new("user_spec.rb")), FileKind::Test);
+        assert_eq!(
+            classify_path(Path::new("src/adapters/foo_test.rs")),
+            FileKind::Test
+        );
+    }
+
+    #[test]
+    fn classify_test_check_does_not_override_manifest() {
+        assert_eq!(
+            classify_path(Path::new("tests/fixtures/package.json")),
+            FileKind::Manifest
+        );
+        assert_eq!(
+            classify_path(Path::new("tests/Cargo.lock")),
+            FileKind::Manifest
+        );
+    }
+
+    #[test]
+    fn classify_does_not_flag_production_paths_as_test() {
+        assert_eq!(classify_path(Path::new("src/main.rs")), FileKind::Source);
+        assert_eq!(classify_path(Path::new("src/testing.rs")), FileKind::Source);
+        assert_eq!(classify_path(Path::new("app/attest.ts")), FileKind::Source);
     }
 
     #[test]
